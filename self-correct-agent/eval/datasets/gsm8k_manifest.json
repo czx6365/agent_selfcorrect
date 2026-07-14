@@ -1,0 +1,15 @@
+{
+  "dataset": "gsm8k",
+  "files": [
+    {
+      "split": "train",
+      "url": "https://huggingface.co/datasets/openai/gsm8k/resolve/main/main/train-00000-of-00001.parquet",
+      "path": "gsm8k/train.parquet"
+    },
+    {
+      "split": "test",
+      "url": "https://huggingface.co/datasets/openai/gsm8k/resolve/main/main/test-00000-of-00001.parquet",
+      "path": "gsm8k/test.parquet"
+    }
+  ]
+}

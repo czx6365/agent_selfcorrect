@@ -1,0 +1,80 @@
+{
+  "dataset": "/Users/czx/Desktop/agent_selfcorrect/self-correct-agent/eval/dataset.jsonl",
+  "dataset_seed": 42,
+  "methods": {
+    "baseline_direct": {
+      "total": 100,
+      "correct": 38,
+      "incorrect": 62,
+      "accuracy": 0.38,
+      "method": "baseline_direct",
+      "dataset": "/Users/czx/Desktop/agent_selfcorrect/self-correct-agent/eval/dataset.jsonl",
+      "dataset_seed": 42,
+      "llm_model": "qwen3-8b",
+      "provider": "local",
+      "temperature": 0.0,
+      "llm_seed": 42,
+      "max_tokens": 512,
+      "thinking": null,
+      "completed_at": "2026-07-14T07:06:35.700667+00:00",
+      "complete": true,
+      "target_total": 100
+    },
+    "baseline_cot": {
+      "total": 100,
+      "correct": 94,
+      "incorrect": 6,
+      "accuracy": 0.94,
+      "method": "baseline_cot",
+      "dataset": "/Users/czx/Desktop/agent_selfcorrect/self-correct-agent/eval/dataset.jsonl",
+      "dataset_seed": 42,
+      "llm_model": "qwen3-8b",
+      "provider": "local",
+      "temperature": 0.0,
+      "llm_seed": 42,
+      "max_tokens": 512,
+      "thinking": null,
+      "completed_at": "2026-07-14T07:28:22.623099+00:00",
+      "complete": true,
+      "target_total": 100
+    },
+    "self_refine": {
+      "total": 100,
+      "correct": 90,
+      "incorrect": 10,
+      "accuracy": 0.9,
+      "method": "self_refine",
+      "dataset": "/Users/czx/Desktop/agent_selfcorrect/self-correct-agent/eval/dataset.jsonl",
+      "dataset_seed": 42,
+      "llm_model": "qwen3-8b",
+      "provider": "local",
+      "temperature": 0.0,
+      "llm_seed": 42,
+      "max_tokens": 512,
+      "thinking": null,
+      "completed_at": "2026-07-14T08:41:38.584781+00:00",
+      "complete": true,
+      "target_total": 100
+    }
+  },
+  "comparison": {
+    "kept_correct": 36,
+    "fixed_by_cot": 58,
+    "regressed_by_cot": 2,
+    "wrong_both": 4
+  },
+  "self_refine": {
+    "cot_to_self_refine": {
+      "kept_correct": 90,
+      "fixed": 0,
+      "regressed": 4,
+      "wrong_both": 6
+    },
+    "on_cot_fixes": {
+      "total": 58,
+      "kept_correct": 56,
+      "regressed": 2
+    }
+  },
+  "updated_at": "2026-07-14T08:41:38.585417+00:00"
+}

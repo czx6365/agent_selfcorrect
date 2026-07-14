@@ -1,0 +1,10 @@
+{
+  "dataset": "humaneval",
+  "files": [
+    {
+      "split": "test",
+      "url": "https://huggingface.co/datasets/openai/openai_humaneval/resolve/main/openai_humaneval/test-00000-of-00001.parquet",
+      "path": "humaneval/test.parquet"
+    }
+  ]
+}
