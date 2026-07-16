@@ -27,6 +27,7 @@ def load_dotenv(path: Path) -> None:
         key = key.strip()
         value = value.strip().strip('"').strip("'")
         if key:
+            # 不覆盖已导出的环境变量，方便命令行临时替换模型配置。
             os.environ.setdefault(key, value)
 
 
@@ -57,6 +58,7 @@ class OpenAICompatibleClient:
             raise LLMConfigurationError("Set OPENAI_MODEL (or DEEPSEEK_MODEL) before running evaluation.")
 
     def complete(self, prompt: str) -> str:
+        # 缓存键包含模型、端点、提示词和生成参数，避免不同实验条件错误复用结果。
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
@@ -94,6 +96,7 @@ class OpenAICompatibleClient:
         except (KeyError, IndexError, TypeError) as error:
             raise RuntimeError(f"Unexpected LLM response: {body!r}") from error
 
+        # 先缓存再返回，使中断后的 --resume 不会再次调用已完成请求。
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         cache_path.write_text(json.dumps({"content": content}, ensure_ascii=False), encoding="utf-8")
         return content
@@ -115,6 +118,7 @@ class LocalLlamaServerClient(OpenAICompatibleClient):
         load_dotenv(Path(__file__).resolve().parent.parent / ".env")
         host = os.getenv("LOCAL_LLM_HOST", "127.0.0.1")
         port = os.getenv("LOCAL_LLM_PORT", "8080")
+        # llama.cpp 复用 OpenAI Chat Completions 协议，因此可继承通用客户端。
         server_url = base_url or os.getenv("LOCAL_LLM_BASE_URL") or f"http://{host}:{port}/v1"
         super().__init__(
             api_key=os.getenv("LOCAL_LLM_API_KEY") or "local",
@@ -162,6 +166,7 @@ class AnthropicCompatibleClient:
         # Some reasoning models emit a long hidden-thinking block before text. Retry
         # only that incomplete protocol response with a larger output allowance.
         for max_tokens in (self.max_tokens, self.max_tokens * 2):
+            # 部分推理模型会先耗尽隐藏思考 token；仅对这种无文本响应加大预算重试。
             payload: dict[str, Any] = {
                 "model": self.model,
                 "max_tokens": max_tokens,

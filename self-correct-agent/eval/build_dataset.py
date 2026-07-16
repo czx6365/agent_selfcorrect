@@ -25,12 +25,14 @@ def build_dataset(source: Path, output: Path, sample_size: int, seed: int) -> No
     if sample_size > len(frame):
         raise ValueError(f"Requested {sample_size} examples, but source only has {len(frame)}")
 
+    # 固定采样种子，保证 Direct、CoT、Self-Refine 始终比较同一批题。
     source_indices = random.Random(seed).sample(range(len(frame)), sample_size)
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", encoding="utf-8") as handle:
         for dataset_index, source_index in enumerate(source_indices):
             row = frame.iloc[source_index]
             answer_raw = str(row["answer"])
+            # GSM8K 官方答案以 #### 分隔最终数字；保留原始推理供人工审计。
             final_answer = answer_raw.rsplit("####", maxsplit=1)[-1].strip().replace(",", "")
             record = {
                 "id": f"gsm8k_test_{dataset_index:03d}",

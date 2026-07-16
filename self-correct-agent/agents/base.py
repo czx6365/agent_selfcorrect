@@ -4,6 +4,7 @@ from typing import Any, Dict, Protocol, Tuple
 
 @dataclass
 class SolveTrace:
+    # 每道题都保存完整轨迹，后续才能统计“改对”和“改错”。
     question_id: str
     method: str
     steps: list[Dict[str, Any]]
@@ -20,7 +21,7 @@ class CompletionClient(Protocol):
     def complete(self, prompt: str) -> str:
         """Return one deterministic completion for a prompt."""
 
-
+# Direct 只要求最终数字，用作最低成本的单轮对照组。
 DIRECT_PROMPT = """Solve the following grade-school math word problem.
 Return only the final numeric answer. Do not include explanation or units.
 
@@ -28,6 +29,7 @@ Problem:
 {question}
 """
 
+# CoT 强制展示推理步骤，并用 FINAL 标记便于判分器稳定抽取答案。
 CHAIN_OF_THOUGHT_PROMPT = """Solve the following grade-school math word problem carefully.
 Show the arithmetic needed to solve it. End with the exact line `FINAL: <number>`.
 Do not round unless the problem explicitly asks you to.
@@ -47,6 +49,7 @@ class BaselineAgent(BaseAgent):
         self.mode = mode
 
     def solve(self, question: str, *, question_id: str = "unknown") -> Tuple[str, SolveTrace]:
+        # 两种 baseline 唯一变量是提示词，保证实验可归因于显式推理。
         prompt = (
             DIRECT_PROMPT.format(question=question)
             if self.mode == "direct"

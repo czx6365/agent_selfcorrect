@@ -18,12 +18,14 @@ HUMANEVAL_FILES = {
 
 
 def download(url: str, target: Path) -> None:
+    # 统一保留原始 parquet，避免数据转换时丢失官方字段。
     target.parent.mkdir(parents=True, exist_ok=True)
     with urllib.request.urlopen(url) as response, target.open("wb") as f:
         shutil.copyfileobj(response, f)
 
 
 def write_manifest(root: Path, dataset: str, files: dict[str, str]) -> None:
+    # manifest 记录来源 URL 和 split，便于实验复现与数据审计。
     manifest = {
         "dataset": dataset,
         "files": [
@@ -69,4 +71,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

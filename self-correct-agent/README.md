@@ -1,6 +1,6 @@
 # self-correct-agent
 
-SelfCorrect 项目的代码骨架。
+SelfCorrect 的第 1、2 周实验实现。
 
 ## 目录
 
@@ -10,14 +10,10 @@ self-correct-agent/
   agents/
     base.py
     self_refine.py
-    reflexion.py
-    critic.py
-  tools/
-    calculator.py
-    code_exec.py
   eval/
     download_data.py
-    dataset_registry.py
+    build_dataset.py
+    llm_client.py
     metrics.py
     run_eval.py
     datasets/
@@ -68,8 +64,8 @@ export OPENAI_BASE_URL="https://api.openai.com/v1"
 
 每次运行只会更新两份结果文件：
 
-- `eval/results/baseline_records.jsonl`：两种方法的逐题预测、原始回答与 trace。
-- `eval/results/baseline_summary.json`：可复现实验配置、准确率与 Direct → CoT 的改对/改错统计。
+- `eval/results/baseline_records.jsonl`：三种方法的逐题预测、原始回答与 trace。
+- `eval/results/baseline_summary.json`：可复现实验配置与方法对比统计。
 - `failure_review.md`：最多五个实际失败案例；明确标注单轮结果无法区分“能力不够”和“缺少检查”。
 
 ### 本地评测
@@ -97,6 +93,24 @@ export OPENAI_BASE_URL="https://api.openai.com/v1"
 
 Self-Refine 先复用 CoT 初稿，再做不含参考答案的自评和改写。`baseline_summary.json` 的 `self_refine` 字段会报告 CoT 到 Self-Refine 的改对/改错，并单列 58 个 CoT 修复题被保留或改错的数量。
 
-当前已保存本地 Qwen3-8B Direct 的 43 条可续跑记录；汇总中明确标记为 `complete: false`，不应将其局部准确率视为正式结果。完整 Direct 和 CoT 完成后，`baseline_summary.json` 会给出最终准确率和改对/改错统计。
+## 第 3 周：Reflection
+
+```bash
+.venv/bin/python main.py eval --provider local --method reflection --max-tokens 512 --workers 1
+```
+
+Reflection 只在外部评测判错后写入一条不含标准答案的具体教训，下一题带入最近三条教训。由于记忆写入顺序属于实验条件，必须使用 `--workers 1`。日志写入 `logs/reflection_log.jsonl`。
+
+### 已完成结果
+
+固定 GSM8K 100 题、Qwen3-8B Q4、本地 llama-server、`temperature=0`、`max_tokens=512`：
+
+| 方法 | 正确数 | 准确率 |
+|---|---:|---:|
+| Direct | 38 / 100 | 38.0% |
+| CoT | 94 / 100 | 94.0% |
+| Self-Refine（1 轮） | 90 / 100 | 90.0% |
+
+CoT 比 Direct 改对 58 题、改错 2 题。Self-Refine 没有修复任何 CoT 错题，反而将 4 个 CoT 正确答案改错；在 CoT 修复的 58 题中，保住 56 题、改坏 2 题。
 
 正式 GSM8K baseline 显式关闭 DeepSeek 的隐藏思考（`ANTHROPIC_THINKING=disabled`），因此温度 `0` 能生效，且“直接作答 vs 可见逐步推理”只比较提示方式。OpenAI-compatible 请求使用种子 `42`；请求会以内容哈希缓存到 `eval/cache/`，同一配置重复运行不会重复扣费。

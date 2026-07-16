@@ -38,6 +38,7 @@ class SelfRefineAgent(BaseAgent):
         self.max_rounds = max_rounds
 
     def solve(self, question: str, *, question_id: str = "unknown"):
+        # 初稿固定采用 CoT，Self-Refine 的比较对象是高质量初稿而非 Direct。
         draft = self.client.complete(CHAIN_OF_THOUGHT_PROMPT.format(question=question))
         trace = SolveTrace(
             question_id=question_id,
@@ -46,13 +47,17 @@ class SelfRefineAgent(BaseAgent):
             final_answer=draft,
         )
         for round_number in range(1, self.max_rounds + 1):
+            # 批评提示中不含标准答案，防止用 gold answer 伪造自我纠错能力。
             critique = self.client.complete(CRITIQUE_PROMPT.format(question=question, draft=draft))
             if critique.strip() == "NO_CHANGE":
+                # 未定位具体问题时保持初稿，避免“为了修改而修改”。
                 revised = draft
             else:
+                # 只将模型自己提出的具体批评交给改写阶段。
                 revised = self.client.complete(
                     REVISION_PROMPT.format(question=question, draft=draft, critique=critique)
-                )
+            )
+            # 每一轮都保留初稿、批评和改写，供事后分析回退原因。
             trace.steps.append(
                 {
                     "round": round_number,

@@ -52,7 +52,25 @@
       "llm_seed": 42,
       "max_tokens": 512,
       "thinking": null,
-      "completed_at": "2026-07-14T08:41:38.584781+00:00",
+      "completed_at": "2026-07-16T03:48:24.380330+00:00",
+      "complete": true,
+      "target_total": 100
+    },
+    "reflection": {
+      "total": 100,
+      "correct": 94,
+      "incorrect": 6,
+      "accuracy": 0.94,
+      "method": "reflection",
+      "dataset": "/Users/czx/Desktop/agent_selfcorrect/self-correct-agent/eval/dataset.jsonl",
+      "dataset_seed": 42,
+      "llm_model": "qwen3-8b",
+      "provider": "local",
+      "temperature": 0.0,
+      "llm_seed": 42,
+      "max_tokens": 512,
+      "thinking": null,
+      "completed_at": "2026-07-16T03:08:22.306206+00:00",
       "complete": true,
       "target_total": 100
     }
@@ -76,5 +94,5 @@
       "regressed": 2
     }
   },
-  "updated_at": "2026-07-14T08:41:38.585417+00:00"
+  "updated_at": "2026-07-16T03:48:24.380985+00:00"
 }

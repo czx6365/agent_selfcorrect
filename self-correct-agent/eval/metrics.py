@@ -13,6 +13,7 @@ FINAL_PATTERN = re.compile(rf"(?:####|FINAL\s*:?)\s*{ANSWER_TOKEN}", re.IGNORECA
 
 
 def _normalize_number_token(token: str) -> str | None:
+    # GSM8K 回答常有千分位或分数，统一成 Decimal 可比较的字符串。
     token = token.replace(",", "").replace(" ", "")
     if "/" not in token:
         return token
@@ -32,6 +33,7 @@ def extract_gsm8k_answer(text: str) -> str | None:
     if match:
         return _normalize_number_token(match.group(1))
 
+    # Direct 不要求 FINAL 标记，只能退化为取输出中的最后一个数字。
     numbers = NUMBER_PATTERN.findall(text)
     return numbers[-1].replace(",", "") if numbers else None
 
@@ -41,6 +43,7 @@ def exact_match(prediction: str | None, answer: str | None) -> bool:
     if prediction is None or answer is None:
         return False
     try:
+        # Decimal 使 12、12.0 等格式差异不影响正确性。
         return Decimal(prediction.replace(",", "")) == Decimal(answer.replace(",", ""))
     except (InvalidOperation, AttributeError):
         return prediction.strip() == answer.strip()

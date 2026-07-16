@@ -1,4 +1,4 @@
-"""Run direct and chain-of-thought GSM8K baselines on the fixed evaluation set."""
+"""在固定 GSM8K 数据集上运行 Direct、CoT 和 Self-Refine 评测。"""
 
 from __future__ import annotations
 
@@ -18,28 +18,32 @@ from eval.llm_client import (
     OpenAICompatibleClient,
 )
 from eval.metrics import accuracy, exact_match, extract_gsm8k_answer
-
+from agents.reflection import Reflection, ReflectionAgent
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_DATASET = ROOT / "dataset.jsonl"
 DEFAULT_RESULTS_DIR = ROOT / "results"
 DEFAULT_FAILURE_REVIEW = ROOT.parent / "failure_review.md"
+DEFAULT_REFLECTION_LOG = ROOT.parent / "logs" / "reflection_log.jsonl"
 RECORDS_FILENAME = "baseline_records.jsonl"
 SUMMARY_FILENAME = "baseline_summary.json"
 
 
 def load_dataset(path: Path) -> list[dict[str, Any]]:
+    """读取 JSONL 数据集。"""
     with path.open(encoding="utf-8") as handle:
         return [json.loads(line) for line in handle if line.strip()]
 
 
 def write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
+    """将记录写入 JSONL 文件。"""
     with path.open("w", encoding="utf-8") as handle:
         for record in records:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 def load_existing_records(path: Path) -> list[dict[str, Any]]:
+    """读取已有评测记录，用于结果合并和断点续跑。"""
     if not path.exists():
         return []
     with path.open(encoding="utf-8") as handle:
@@ -47,15 +51,23 @@ def load_existing_records(path: Path) -> list[dict[str, Any]]:
 
 
 def build_comparison(records: list[dict[str, Any]]) -> dict[str, int] | None:
+    """逐题比较 Direct 和 CoT 的正确性变化。"""
     by_method: dict[str, dict[str, dict[str, Any]]] = {}
     for record in records:
         by_method.setdefault(record["method"], {})[record["id"]] = record
+
     direct = by_method.get("baseline_direct")
     cot = by_method.get("baseline_cot")
+    # 只有两种方法覆盖完全相同的题目时才能比较。
     if not direct or not cot or direct.keys() != cot.keys():
         return None
 
-    comparison = {"kept_correct": 0, "fixed_by_cot": 0, "regressed_by_cot": 0, "wrong_both": 0}
+    comparison = {
+        "kept_correct": 0,
+        "fixed_by_cot": 0,
+        "regressed_by_cot": 0,
+        "wrong_both": 0,
+    }
     for question_id, direct_record in direct.items():
         cot_record = cot[question_id]
         key = {
@@ -68,59 +80,111 @@ def build_comparison(records: list[dict[str, Any]]) -> dict[str, int] | None:
     return comparison
 
 
-def compare_methods(records: list[dict[str, Any]], before: str, after: str) -> dict[str, int] | None:
-    by_method = {method: {item["id"]: item for item in records if item["method"] == method} for method in (before, after)}
+def compare_methods(
+    records: list[dict[str, Any]], before: str, after: str
+) -> dict[str, int] | None:
+    """比较任意两种方法：保持正确、修复、退化和均错误。"""
+    by_method = {
+        method: {
+            item["id"]: item
+            for item in records
+            if item["method"] == method
+        }
+        for method in (before, after)
+    }
     if not by_method[before] or by_method[before].keys() != by_method[after].keys():
         return None
+
     result = {"kept_correct": 0, "fixed": 0, "regressed": 0, "wrong_both": 0}
     for question_id, before_record in by_method[before].items():
         after_record = by_method[after][question_id]
         key = {
-            (True, True): "kept_correct", (False, True): "fixed",
-            (True, False): "regressed", (False, False): "wrong_both",
+            (True, True): "kept_correct",
+            (False, True): "fixed",
+            (True, False): "regressed",
+            (False, False): "wrong_both",
         }[(bool(before_record["correct"]), bool(after_record["correct"]))]
         result[key] += 1
     return result
 
 
 def self_refine_report(records: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """分析 Self-Refine 相比 CoT 的修复与退化情况。"""
     cot_to_refine = compare_methods(records, "baseline_cot", "self_refine")
     direct_to_cot = compare_methods(records, "baseline_direct", "baseline_cot")
     if cot_to_refine is None or direct_to_cot is None:
         return None
-    direct = {item["id"]: item for item in records if item["method"] == "baseline_direct"}
-    cot = {item["id"]: item for item in records if item["method"] == "baseline_cot"}
-    refine = {item["id"]: item for item in records if item["method"] == "self_refine"}
-    cot_fixes = [question_id for question_id in direct if not direct[question_id]["correct"] and cot[question_id]["correct"]]
+
+    direct = {
+        item["id"]: item
+        for item in records
+        if item["method"] == "baseline_direct"
+    }
+    cot = {
+        item["id"]: item
+        for item in records
+        if item["method"] == "baseline_cot"
+    }
+    refine = {
+        item["id"]: item
+        for item in records
+        if item["method"] == "self_refine"
+    }
+
+    # 检查 Self-Refine 是否破坏了 CoT 已经修复的题目。
+    cot_fixes = [
+        question_id
+        for question_id in direct
+        if not direct[question_id]["correct"] and cot[question_id]["correct"]
+    ]
     return {
         "cot_to_self_refine": cot_to_refine,
         "on_cot_fixes": {
             "total": len(cot_fixes),
-            "kept_correct": sum(bool(refine[item_id]["correct"]) for item_id in cot_fixes),
-            "regressed": sum(not refine[item_id]["correct"] for item_id in cot_fixes),
+            "kept_correct": sum(
+                bool(refine[item_id]["correct"]) for item_id in cot_fixes
+            ),
+            "regressed": sum(
+                not refine[item_id]["correct"] for item_id in cot_fixes
+            ),
         },
     }
 
 
-def write_failure_review(path: Path, records: list[dict[str, Any]], summary: dict[str, Any]) -> None:
+def reflection_report(records: list[dict[str, Any]]) -> dict[str, int] | None:
+    """比较 CoT 与 Reflection；两者必须覆盖同一批题目才有意义。"""
+    return compare_methods(records, "baseline_cot", "reflection")
+
+
+def write_failure_review(
+    path: Path, records: list[dict[str, Any]], summary: dict[str, Any]
+) -> None:
+    """生成最多包含五个失败样本的 Markdown 报告。"""
     failures = [record for record in records if not record["correct"]]
     lines = [
         "# Baseline Failure Review",
         "",
         f"- Method: `{summary['method']}`",
-        f"- Evaluated: {summary['total']} GSM8K test examples (fixed seed: {summary['dataset_seed']})",
-        f"- Accuracy: {summary['accuracy']:.1%} ({summary['correct']}/{summary['total']})",
+        f"- Evaluated: {summary['total']} GSM8K test examples "
+        f"(fixed seed: {summary['dataset_seed']})",
+        f"- Accuracy: {summary['accuracy']:.1%} "
+        f"({summary['correct']}/{summary['total']})",
         f"- Failure cases below: {min(len(failures), 5)} of {len(failures)}",
         "",
         "## Interpretation boundary",
         "",
-        "A one-pass baseline only establishes that the final answer is wrong. It cannot prove whether the model lacked the reasoning capability or had a recoverable mistake that it failed to check. That distinction requires a later independent critique or tool-feedback trace; do not infer it from the gold answer during generation.",
+        "A one-pass baseline only establishes that the final answer is wrong. "
+        "It cannot prove whether the model lacked the reasoning capability or "
+        "had a recoverable mistake that it failed to check. That distinction "
+        "requires a later independent critique or tool-feedback trace; do not "
+        "infer it from the gold answer during generation.",
         "",
         "## Sample Failures",
         "",
     ]
     if not failures:
         lines.append("No failures were recorded.")
+
     for record in failures[:5]:
         lines.extend(
             [
@@ -130,7 +194,9 @@ def write_failure_review(path: Path, records: list[dict[str, Any]], summary: dic
                 "",
                 f"- Expected: `{record['expected_answer']}`",
                 f"- Extracted prediction: `{record['prediction'] or 'unparsed'}`",
-                f"- Initial classification: `needs critique/verification`; baseline evidence alone cannot separate capability failure from missed checking.",
+                "- Initial classification: `needs critique/verification`; "
+                "baseline evidence alone cannot separate capability failure "
+                "from missed checking.",
                 "",
                 "Model response:",
                 "",
@@ -144,12 +210,16 @@ def write_failure_review(path: Path, records: list[dict[str, Any]], summary: dic
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
+    """执行评测、保存记录并生成汇总结果。"""
+    if args.method == "reflection" and args.workers != 1:
+        raise ValueError("Reflection 必须使用 --workers 1，保证 memory 写入顺序可复现。")
     examples = load_dataset(args.dataset)
     if args.limit:
         examples = examples[: args.limit]
     if not examples:
         raise ValueError("No evaluation examples found.")
 
+    # provider 只决定调用协议，模型配置会写入 summary。
     if args.provider == "anthropic":
         client = AnthropicCompatibleClient(
             model=args.model,
@@ -174,14 +244,26 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             seed=args.seed,
             max_tokens=args.max_tokens,
         )
-    method = "self_refine" if args.method == "self_refine" else f"baseline_{args.mode}"
-    agent = SelfRefineAgent(client, max_rounds=args.rounds) if args.method == "self_refine" else BaselineAgent(client, mode=args.mode)
+
+    if args.method == "baseline":
+        method = f"baseline_{args.mode}"
+        agent = BaselineAgent(client, mode=args.mode)
+    elif args.method == "self_refine":
+        method = "self_refine"
+        agent = SelfRefineAgent(client, max_rounds=args.rounds)
+    else:
+        method = "reflection"
+        agent = ReflectionAgent(client)
+
     args.results_dir.mkdir(parents=True, exist_ok=True)
     records_path = args.results_dir / RECORDS_FILENAME
     summary_path = args.results_dir / SUMMARY_FILENAME
+
     if args.reset_results and summary_path.exists():
         summary_path.unlink()
     all_records = [] if args.reset_results else load_existing_records(records_path)
+
+    # 防止不同模型配置混入同一组实验结果。
     if all_records and summary_path.exists():
         existing_summary = json.loads(summary_path.read_text(encoding="utf-8"))
         existing_methods = existing_summary.get("methods", {}).values()
@@ -200,21 +282,79 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "Existing results use a different model configuration. "
                 "Pass --reset-results to start a new comparable experiment."
             )
-    other_records = [record for record in all_records if record.get("method") != method]
-    records = [record for record in all_records if record.get("method") == method] if args.resume else []
+
+    # 保留其他方法结果；--resume 时恢复当前方法结果。
+    other_records = [
+        record for record in all_records if record.get("method") != method
+    ]
+    records = (
+        [
+            record
+            for record in all_records
+            if record.get("method") == method
+        ]
+        if args.resume
+        else []
+    )
     completed_ids = {record["id"] for record in records}
+    if args.method == "reflection" and records:
+        # --resume 会创建新 agent，必须从已有 trace 恢复记忆才与一次性运行等价。
+        agent.restore_memory(
+            [
+                Reflection(record["id"], step["lesson_written"])
+                for record in records
+                for step in record["trace"]["steps"]
+                if "lesson_written" in step
+            ]
+        )
     if completed_ids:
-        print(f"Resuming with {len(completed_ids)} completed examples.", flush=True)
-    pending_examples = [example for example in examples if example["id"] not in completed_ids]
+        print(
+            f"Resuming with {len(completed_ids)} completed examples.",
+            flush=True,
+        )
+
+    pending_examples = [
+        example for example in examples if example["id"] not in completed_ids
+    ]
     if args.max_new is not None:
         pending_examples = pending_examples[: args.max_new]
 
+    reflection_log = None
+    if args.method == "reflection":
+        args.reflection_log.parent.mkdir(parents=True, exist_ok=True)
+        reflection_log = args.reflection_log.open("a", encoding="utf-8")
+
     def evaluate_example(example: dict[str, Any]) -> dict[str, Any]:
-        raw_response, trace = agent.solve(example["question"], question_id=example["id"])
+        """评测一道题，标准答案不会传入 Agent。"""
+        raw_response, trace = agent.solve(
+            example["question"], question_id=example["id"]
+        )
         prediction = extract_gsm8k_answer(raw_response)
         correct = exact_match(prediction, example["answer"])
         trace.final_answer = prediction or ""
         trace.final_correct = correct
+        if args.method == "reflection" and not correct:
+            # 评测器只传递“错误”这一信号，不把参考答案泄漏给 agent。
+            reflection = agent.reflect(
+                example["question"], raw_response, question_id=example["id"]
+            )
+            trace.steps.append(
+                {
+                    "round": 1,
+                    "feedback": "incorrect",
+                    "feedback_source": "external_evaluator",
+                    "lesson_written": reflection.lesson,
+                }
+            )
+            if reflection_log:
+                reflection_log.write(
+                    json.dumps(
+                        {"question_id": example["id"], "lesson": reflection.lesson},
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+                reflection_log.flush()
         return {
             "method": method,
             "id": example["id"],
@@ -227,20 +367,31 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         }
 
     with records_path.open("w", encoding="utf-8") as records_handle:
+        # 先回写旧记录，确保中断后可以继续运行。
         for record in other_records + records:
             records_handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
         with ThreadPoolExecutor(max_workers=args.workers) as executor:
-            futures = [executor.submit(evaluate_example, example) for example in pending_examples]
+            futures = [
+                executor.submit(evaluate_example, example)
+                for example in pending_examples
+            ]
             for completed, future in enumerate(as_completed(futures), start=1):
                 record = future.result()
                 records.append(record)
-                records_handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+                records_handle.write(
+                    json.dumps(record, ensure_ascii=False) + "\n"
+                )
                 records_handle.flush()
                 print(
-                    f"[{len(completed_ids) + completed}/{len(examples)}] {record['id']}: "
+                    f"[{len(completed_ids) + completed}/{len(examples)}] "
+                    f"{record['id']}: "
                     f"{'correct' if record['correct'] else 'wrong'}",
                     flush=True,
                 )
+
+    if reflection_log:
+        reflection_log.close()
 
     summary: dict[str, Any] = {
         **accuracy(records),
@@ -257,9 +408,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "complete": len(records) == len(examples),
         "target_total": len(examples),
     }
+
     combined_summary: dict[str, Any] = {}
     if summary_path.exists() and not args.reset_results:
         combined_summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
     methods = combined_summary.get("methods", {})
     methods[method] = summary
     combined_summary = {
@@ -268,53 +421,118 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "methods": methods,
         "comparison": build_comparison(other_records + records),
         "self_refine": self_refine_report(other_records + records),
+        "reflection": reflection_report(other_records + records),
         "updated_at": datetime.now(UTC).isoformat(),
     }
-    summary_path.write_text(json.dumps(combined_summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    summary_path.write_text(
+        json.dumps(combined_summary, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
     if summary["complete"]:
         write_failure_review(args.failure_review, records, summary)
     return summary
 
 
 def parse_args() -> argparse.Namespace:
+    """解析命令行参数。"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
-    parser.add_argument("--method", choices=("baseline", "self_refine"), default="baseline")
-    parser.add_argument("--provider", choices=("openai", "anthropic", "local"), default="local")
+    parser.add_argument(
+        "--method",
+        choices=("baseline", "self_refine", "reflection"),
+        default="baseline",
+    )
+    parser.add_argument(
+        "--provider",
+        choices=("openai", "anthropic", "local"),
+        default="local",
+    )
     parser.add_argument("--mode", choices=("direct", "cot"), default="cot")
-    parser.add_argument("--rounds", type=int, default=1, help="Self-Refine critique/revision rounds.")
+    parser.add_argument(
+        "--rounds",
+        type=int,
+        default=1,
+        help="Self-Refine critique/revision rounds.",
+    )
     parser.add_argument("--limit", type=int, default=None)
-    parser.add_argument("--max-new", type=int, default=None, help="At most this many new examples per invocation.")
-    parser.add_argument("--workers", type=int, default=1, help="Concurrent model requests; use conservatively.")
-    parser.add_argument("--model", default=None, help="Overrides the provider's configured model.")
-    parser.add_argument("--base-url", default=None, help="Overrides the provider's configured base URL.")
+    parser.add_argument(
+        "--max-new",
+        type=int,
+        default=None,
+        help="At most this many new examples per invocation.",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Concurrent model requests; use conservatively.",
+    )
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Overrides the provider's configured model.",
+    )
+    parser.add_argument(
+        "--base-url",
+        default=None,
+        help="Overrides the provider's configured base URL.",
+    )
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--max-tokens", type=int, default=2048)
-    parser.add_argument("--thinking", choices=("enabled", "disabled"), default="disabled")
+    parser.add_argument(
+        "--thinking",
+        choices=("enabled", "disabled"),
+        default="disabled",
+    )
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS_DIR)
+    parser.add_argument(
+        "--results-dir",
+        type=Path,
+        default=DEFAULT_RESULTS_DIR,
+    )
     parser.add_argument(
         "--reset-results",
         action="store_true",
-        help="Discard existing records before starting a different model configuration.",
+        help="Discard existing records before starting a different configuration.",
     )
-    parser.add_argument("--failure-review", type=Path, default=DEFAULT_FAILURE_REVIEW)
+    parser.add_argument(
+        "--failure-review",
+        type=Path,
+        default=DEFAULT_FAILURE_REVIEW,
+    )
+    parser.add_argument(
+        "--reflection-log",
+        type=Path,
+        default=DEFAULT_REFLECTION_LOG,
+        help="Append generated lessons here when using --method reflection.",
+    )
     parser.add_argument(
         "--resume",
         action="store_true",
-        help="Resume an interrupted run from its existing JSONL records.",
+        help="Resume an interrupted run from existing JSONL records.",
     )
     return parser.parse_args()
 
 
 def main() -> None:
+    """程序入口。"""
     args = parse_args()
     try:
         summary = run(args)
-    except LLMConfigurationError as error:
+    except (LLMConfigurationError, ValueError) as error:
         raise SystemExit(f"Evaluation was not started: {error}") from error
-    state = "complete" if summary["complete"] else f"partial, target {summary['target_total']}"
-    print(f"Accuracy ({summary['method']}, {state}): {summary['accuracy']:.1%} ({summary['correct']}/{summary['total']})")
+
+    state = (
+        "complete"
+        if summary["complete"]
+        else f"partial, target {summary['target_total']}"
+    )
+    print(
+        f"Accuracy ({summary['method']}, {state}): "
+        f"{summary['accuracy']:.1%} "
+        f"({summary['correct']}/{summary['total']})"
+    )
 
 
 if __name__ == "__main__":
