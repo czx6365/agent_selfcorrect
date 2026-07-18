@@ -120,7 +120,7 @@ Reflexion 的效果依赖反馈信号质量和反思质量。错误反思会污�
 
 ### 5. 对我的实现有什么启发？
 
-`reflexion.py` 应该单独维护：
+`reflection.py` 应该单独维护：
 
 ```text
 logs/reflection_log.jsonl

@@ -42,6 +42,7 @@ class OpenAICompatibleClient:
         seed: int = 42,
         max_tokens: int = 512,
         cache_dir: Path | None = None,
+        timeout_seconds: float = 120.0,
     ) -> None:
         load_dotenv(Path(__file__).resolve().parent.parent / ".env")
         self.api_key = api_key or os.getenv("OPENAI_API_KEY") or os.getenv("DEEPSEEK_API_KEY")
@@ -51,6 +52,7 @@ class OpenAICompatibleClient:
         self.seed = seed
         self.max_tokens = max_tokens
         self.cache_dir = cache_dir or Path(__file__).resolve().parent / "cache"
+        self.timeout_seconds = timeout_seconds
 
         if not self.api_key:
             raise LLMConfigurationError("Set OPENAI_API_KEY (or DEEPSEEK_API_KEY) before running evaluation.")
@@ -83,7 +85,7 @@ class OpenAICompatibleClient:
             method="POST",
         )
         try:
-            with urlopen(request, timeout=120) as response:
+            with urlopen(request, timeout=self.timeout_seconds) as response:
                 body = json.loads(response.read().decode("utf-8"))
         except HTTPError as error:
             detail = error.read().decode("utf-8", errors="replace")[:500]
@@ -128,6 +130,8 @@ class LocalLlamaServerClient(OpenAICompatibleClient):
             seed=seed,
             max_tokens=max_tokens,
             cache_dir=cache_dir,
+            # llama.cpp 常用单 slot；并发请求会排队，不能沿用云端 120 秒上限。
+            timeout_seconds=float(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "600")),
         )
 
 

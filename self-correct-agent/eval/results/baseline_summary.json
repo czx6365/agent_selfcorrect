@@ -34,7 +34,7 @@
       "llm_seed": 42,
       "max_tokens": 512,
       "thinking": null,
-      "completed_at": "2026-07-14T07:28:22.623099+00:00",
+      "completed_at": "2026-07-16T09:24:33.872762+00:00",
       "complete": true,
       "target_total": 100
     },
@@ -73,6 +73,88 @@
       "completed_at": "2026-07-16T03:08:22.306206+00:00",
       "complete": true,
       "target_total": 100
+    },
+    "critic": {
+      "total": 100,
+      "correct": 90,
+      "incorrect": 10,
+      "accuracy": 0.9,
+      "method": "critic",
+      "dataset": "/Users/czx/Desktop/agent_selfcorrect/self-correct-agent/eval/dataset.jsonl",
+      "dataset_seed": 42,
+      "llm_model": "qwen3-8b",
+      "provider": "local",
+      "temperature": 0.0,
+      "llm_seed": 42,
+      "max_tokens": 512,
+      "thinking": null,
+      "completed_at": "2026-07-16T09:30:19.083087+00:00",
+      "complete": true,
+      "target_total": 100
+    },
+    "reflection_embedding": {
+      "total": 100,
+      "correct": 89,
+      "incorrect": 11,
+      "accuracy": 0.89,
+      "method": "reflection_embedding",
+      "dataset": "/Users/czx/Desktop/agent_selfcorrect/self-correct-agent/eval/dataset.jsonl",
+      "dataset_seed": 42,
+      "llm_model": "qwen3-8b",
+      "provider": "local",
+      "temperature": 0.0,
+      "llm_seed": 42,
+      "max_tokens": 512,
+      "thinking": null,
+      "completed_at": "2026-07-17T12:29:42.951320+00:00",
+      "complete": true,
+      "target_total": 100,
+      "memory_retrieval": "embedding",
+      "memory_top_k": 3,
+      "embedding_model": "local-hash"
+    },
+    "reflection_embedding_correct_embedding": {
+      "total": 100,
+      "correct": 96,
+      "incorrect": 4,
+      "accuracy": 0.96,
+      "method": "reflection_embedding_correct_embedding",
+      "dataset": "/Users/czx/Desktop/agent_selfcorrect/self-correct-agent/eval/dataset.jsonl",
+      "dataset_seed": 42,
+      "llm_model": "qwen3-8b",
+      "provider": "local",
+      "temperature": 0.0,
+      "llm_seed": 42,
+      "max_tokens": 512,
+      "thinking": null,
+      "completed_at": "2026-07-18T08:12:21.756653+00:00",
+      "complete": true,
+      "target_total": 100,
+      "memory_retrieval": "embedding",
+      "memory_top_k": 3,
+      "correct_examples": "embedding",
+      "correct_top_k": 3,
+      "embedding_model": "sentence-transformers/all-MiniLM-L6-v2"
+    },
+    "self_refine_r2": {
+      "total": 100,
+      "correct": 92,
+      "incorrect": 8,
+      "accuracy": 0.92,
+      "method": "self_refine_r2",
+      "dataset": "/Users/czx/Desktop/agent_selfcorrect/self-correct-agent/eval/dataset.jsonl",
+      "dataset_seed": 42,
+      "llm_model": "qwen3-8b",
+      "provider": "local",
+      "temperature": 0.0,
+      "llm_seed": 42,
+      "max_tokens": 512,
+      "thinking": null,
+      "completed_at": "2026-07-18T13:04:53.145009+00:00",
+      "complete": true,
+      "target_total": 100,
+      "feedback_source": "self",
+      "rounds": 2
     }
   },
   "comparison": {
@@ -88,11 +170,49 @@
       "regressed": 4,
       "wrong_both": 6
     },
+    "by_round": {
+      "self_refine": {
+        "kept_correct": 90,
+        "fixed": 0,
+        "regressed": 4,
+        "wrong_both": 6
+      },
+      "self_refine_r2": {
+        "kept_correct": 90,
+        "fixed": 2,
+        "regressed": 4,
+        "wrong_both": 4
+      }
+    },
     "on_cot_fixes": {
       "total": 58,
       "kept_correct": 56,
       "regressed": 2
     }
   },
-  "updated_at": "2026-07-16T03:48:24.380985+00:00"
+  "reflection": {
+    "vs_cot": {
+      "recent": null,
+      "embedding": {
+        "kept_correct": 88,
+        "fixed": 1,
+        "regressed": 6,
+        "wrong_both": 5
+      },
+      "embedding_correct": {
+        "kept_correct": 94,
+        "fixed": 2,
+        "regressed": 0,
+        "wrong_both": 4
+      }
+    },
+    "embedding_vs_recent": null,
+    "embedding_correct_vs_embedding": {
+      "kept_correct": 88,
+      "fixed": 8,
+      "regressed": 1,
+      "wrong_both": 3
+    }
+  },
+  "updated_at": "2026-07-18T13:04:53.160246+00:00"
 }

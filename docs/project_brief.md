@@ -80,7 +80,7 @@ self-correct-agent
 
 - **baseline**：直接解，不自查
 - **self_refine**：解 → 自评 → 改写（迭代 1–3 轮）
-- **reflexion**：失败后写一条"教训"存进记忆，下次重试时带上
+- **reflection**：失败后写一条"教训"存进记忆，下次重试时带上
 - **critic**：反馈不靠空想，而是**跑代码 / 单元测试 / 计算器**验证后再改
 
 ### 3. 一次求解的记录长什么样（便于分析）
@@ -101,7 +101,7 @@ self-correct-agent
 
 ```bash
 python main.py solve "小明有3个苹果，又买了2袋每袋4个……"
-python main.py eval --method baseline      # method: baseline / self_refine / reflexion / critic
+python main.py eval --method baseline      # method: baseline / self_refine / reflection / critic
 ```
 
 ---

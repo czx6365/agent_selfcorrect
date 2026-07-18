@@ -1,0 +1,148 @@
+{
+  "dataset": "/Users/czx/Desktop/agent_selfcorrect/self-correct-agent/eval/datasets/humaneval/test.parquet",
+  "methods": {
+    "code_direct": {
+      "total": 100,
+      "passed": 82,
+      "failed": 18,
+      "pass_rate": 0.82,
+      "method": "code_direct",
+      "dataset": "/Users/czx/Desktop/agent_selfcorrect/self-correct-agent/eval/datasets/humaneval/test.parquet",
+      "provider": "local",
+      "llm_model": "qwen3-8b",
+      "temperature": 0.0,
+      "llm_seed": 42,
+      "max_tokens": 768,
+      "repair_rounds": 0,
+      "timeout_seconds": 3.0,
+      "complete": true,
+      "target_total": 100,
+      "completed_at": "2026-07-18T09:40:48.010702+00:00"
+    },
+    "code_cot": {
+      "total": 100,
+      "passed": 85,
+      "failed": 15,
+      "pass_rate": 0.85,
+      "method": "code_cot",
+      "dataset": "/Users/czx/Desktop/agent_selfcorrect/self-correct-agent/eval/datasets/humaneval/test.parquet",
+      "provider": "local",
+      "llm_model": "qwen3-8b",
+      "temperature": 0.0,
+      "llm_seed": 42,
+      "max_tokens": 768,
+      "repair_rounds": 0,
+      "timeout_seconds": 3.0,
+      "complete": true,
+      "target_total": 100,
+      "completed_at": "2026-07-18T09:57:14.734238+00:00"
+    },
+    "code_self_repair": {
+      "total": 100,
+      "passed": 85,
+      "failed": 15,
+      "pass_rate": 0.85,
+      "method": "code_self_repair",
+      "dataset": "/Users/czx/Desktop/agent_selfcorrect/self-correct-agent/eval/datasets/humaneval/test.parquet",
+      "provider": "local",
+      "llm_model": "qwen3-8b",
+      "temperature": 0.0,
+      "llm_seed": 42,
+      "max_tokens": 768,
+      "repair_rounds": 1,
+      "timeout_seconds": 3.0,
+      "complete": true,
+      "target_total": 100,
+      "completed_at": "2026-07-18T10:01:40.272382+00:00"
+    },
+    "code_cot_repair": {
+      "total": 100,
+      "passed": 85,
+      "failed": 15,
+      "pass_rate": 0.85,
+      "method": "code_cot_repair",
+      "dataset": "/Users/czx/Desktop/agent_selfcorrect/self-correct-agent/eval/datasets/humaneval/test.parquet",
+      "provider": "local",
+      "llm_model": "qwen3-8b",
+      "temperature": 0.0,
+      "llm_seed": 42,
+      "max_tokens": 768,
+      "repair_rounds": 1,
+      "timeout_seconds": 3.0,
+      "complete": true,
+      "target_total": 100,
+      "completed_at": "2026-07-18T11:48:05.446369+00:00"
+    },
+    "code_self_repair_r2": {
+      "total": 100,
+      "passed": 85,
+      "failed": 15,
+      "pass_rate": 0.85,
+      "method": "code_self_repair_r2",
+      "dataset": "/Users/czx/Desktop/agent_selfcorrect/self-correct-agent/eval/datasets/humaneval/test.parquet",
+      "provider": "local",
+      "llm_model": "qwen3-8b",
+      "temperature": 0.0,
+      "llm_seed": 42,
+      "max_tokens": 768,
+      "repair_rounds": 2,
+      "feedback_source": "unit_tests",
+      "timeout_seconds": 3.0,
+      "complete": true,
+      "target_total": 100,
+      "completed_at": "2026-07-18T13:12:42.954728+00:00"
+    }
+  },
+  "comparison": {
+    "direct_to_cot": {
+      "kept_pass": 81,
+      "fixed": 4,
+      "regressed": 1,
+      "failed_both": 14
+    },
+    "direct_to_self_repair": {
+      "kept_pass": 82,
+      "fixed": 3,
+      "regressed": 0,
+      "failed_both": 15
+    },
+    "direct_to_cot_repair": {
+      "kept_pass": 81,
+      "fixed": 4,
+      "regressed": 1,
+      "failed_both": 14
+    },
+    "cot_to_self_repair": {
+      "kept_pass": 82,
+      "fixed": 3,
+      "regressed": 3,
+      "failed_both": 12
+    },
+    "cot_to_cot_repair": {
+      "kept_pass": 85,
+      "fixed": 0,
+      "regressed": 0,
+      "failed_both": 15
+    },
+    "self_repair_to_cot_repair": {
+      "kept_pass": 82,
+      "fixed": 3,
+      "regressed": 3,
+      "failed_both": 12
+    },
+    "best_of_available": {
+      "methods": [
+        "code_cot",
+        "code_cot_repair",
+        "code_direct",
+        "code_self_repair",
+        "code_self_repair_r2"
+      ],
+      "total": 100,
+      "passed": 88,
+      "failed": 12,
+      "pass_rate": 0.88
+    }
+  },
+  "updated_at": "2026-07-18T13:12:42.959084+00:00"
+}

@@ -1,4 +1,4 @@
-# CoT Baseline Failure Review
+# Baseline Failure Review
 
 - Method: `baseline_cot`
 - Evaluated: 100 GSM8K test examples (fixed seed: 42)

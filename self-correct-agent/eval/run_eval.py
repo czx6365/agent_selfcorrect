@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from agents.base import BaselineAgent
+from agents.critic import CriticAgent
 from agents.self_refine import SelfRefineAgent
 from eval.llm_client import (
     AnthropicCompatibleClient,
@@ -18,7 +19,7 @@ from eval.llm_client import (
     OpenAICompatibleClient,
 )
 from eval.metrics import accuracy, exact_match, extract_gsm8k_answer
-from agents.reflection import Reflection, ReflectionAgent
+from agents.reflection import CorrectExample, Reflection, ReflectionAgent
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_DATASET = ROOT / "dataset.jsonl"
@@ -111,8 +112,20 @@ def compare_methods(
 def self_refine_report(records: list[dict[str, Any]]) -> dict[str, Any] | None:
     """分析 Self-Refine 相比 CoT 的修复与退化情况。"""
     cot_to_refine = compare_methods(records, "baseline_cot", "self_refine")
+    variants = sorted(
+        {
+            record["method"]
+            for record in records
+            if record["method"] == "self_refine"
+            or record["method"].startswith("self_refine_r")
+        }
+    )
+    by_round = {
+        method: compare_methods(records, "baseline_cot", method)
+        for method in variants
+    }
     direct_to_cot = compare_methods(records, "baseline_direct", "baseline_cot")
-    if cot_to_refine is None or direct_to_cot is None:
+    if not variants or direct_to_cot is None:
         return None
 
     direct = {
@@ -137,9 +150,12 @@ def self_refine_report(records: list[dict[str, Any]]) -> dict[str, Any] | None:
         for question_id in direct
         if not direct[question_id]["correct"] and cot[question_id]["correct"]
     ]
-    return {
+    report: dict[str, Any] = {
         "cot_to_self_refine": cot_to_refine,
-        "on_cot_fixes": {
+        "by_round": by_round,
+    }
+    if refine:
+        report["on_cot_fixes"] = {
             "total": len(cot_fixes),
             "kept_correct": sum(
                 bool(refine[item_id]["correct"]) for item_id in cot_fixes
@@ -147,12 +163,33 @@ def self_refine_report(records: list[dict[str, Any]]) -> dict[str, Any] | None:
             "regressed": sum(
                 not refine[item_id]["correct"] for item_id in cot_fixes
             ),
-        },
-    }
+        }
+    return report
 
 
-def reflection_report(records: list[dict[str, Any]]) -> dict[str, int] | None:
-    """比较 CoT 与 Reflection；两者必须覆盖同一批题目才有意义。"""
+def reflection_report(records: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """比较按时间与按语义检索的 Reflection，且保留旧实验的兼容统计。"""
+    recent = compare_methods(records, "baseline_cot", "reflection_recent")
+    embedding = compare_methods(records, "baseline_cot", "reflection_embedding")
+    embedding_correct = compare_methods(
+        records, "baseline_cot", "reflection_embedding_correct_embedding"
+    )
+    if recent is not None or embedding is not None or embedding_correct is not None:
+        return {
+            "vs_cot": {
+                "recent": recent,
+                "embedding": embedding,
+                "embedding_correct": embedding_correct,
+            },
+            "embedding_vs_recent": compare_methods(
+                records, "reflection_recent", "reflection_embedding"
+            ),
+            "embedding_correct_vs_embedding": compare_methods(
+                records,
+                "reflection_embedding",
+                "reflection_embedding_correct_embedding",
+            ),
+        }
     return compare_methods(records, "baseline_cot", "reflection")
 
 
@@ -201,7 +238,10 @@ def write_failure_review(
                 "Model response:",
                 "",
                 "```text",
-                record["raw_response"].strip(),
+                "\n".join(
+                    line.rstrip()
+                    for line in record["raw_response"].strip().splitlines()
+                ),
                 "```",
                 "",
             ]
@@ -213,6 +253,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     """执行评测、保存记录并生成汇总结果。"""
     if args.method == "reflection" and args.workers != 1:
         raise ValueError("Reflection 必须使用 --workers 1，保证 memory 写入顺序可复现。")
+    if args.method == "reflection" and args.memory_top_k < 1:
+        raise ValueError("Reflection 的 --memory-top-k 必须至少为 1。")
+    if args.method == "reflection" and args.correct_top_k < 1:
+        raise ValueError("Reflection 的 --correct-top-k 必须至少为 1。")
     examples = load_dataset(args.dataset)
     if args.limit:
         examples = examples[: args.limit]
@@ -250,10 +294,25 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         agent = BaselineAgent(client, mode=args.mode)
     elif args.method == "self_refine":
         method = "self_refine"
+        if args.rounds != 1:
+            method = f"self_refine_r{args.rounds}"
         agent = SelfRefineAgent(client, max_rounds=args.rounds)
+    elif args.method == "critic":
+        # CRITIC 只依赖本题的计算器反馈，因此可安全并发运行。
+        method = "critic"
+        agent = CriticAgent(client)
     else:
-        method = "reflection"
-        agent = ReflectionAgent(client)
+        method = f"reflection_{args.memory_retrieval}"
+        if args.correct_examples != "none":
+            method = f"{method}_correct_{args.correct_examples}"
+        agent = ReflectionAgent(
+            client,
+            memory_limit=args.memory_top_k,
+            retrieval=args.memory_retrieval,
+            correct_examples=args.correct_examples,
+            correct_top_k=args.correct_top_k,
+            embedding_model=args.embedding_model,
+        )
 
     args.results_dir.mkdir(parents=True, exist_ok=True)
     records_path = args.results_dir / RECORDS_FILENAME
@@ -301,10 +360,26 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         # --resume 会创建新 agent，必须从已有 trace 恢复记忆才与一次性运行等价。
         agent.restore_memory(
             [
-                Reflection(record["id"], step["lesson_written"])
+                Reflection(
+                    question_id=record["id"],
+                    lesson=step["lesson_written"],
+                    question=record["question"],
+                )
                 for record in records
                 for step in record["trace"]["steps"]
                 if "lesson_written" in step
+            ]
+        )
+        agent.restore_correct_examples(
+            [
+                CorrectExample(
+                    question_id=record["id"],
+                    question=record["question"],
+                    solution=record["raw_response"],
+                    answer=record["prediction"] or "",
+                )
+                for record in records
+                if record.get("correct")
             ]
         )
     if completed_ids:
@@ -333,28 +408,48 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         correct = exact_match(prediction, example["answer"])
         trace.final_answer = prediction or ""
         trace.final_correct = correct
-        if args.method == "reflection" and not correct:
-            # 评测器只传递“错误”这一信号，不把参考答案泄漏给 agent。
-            reflection = agent.reflect(
-                example["question"], raw_response, question_id=example["id"]
-            )
-            trace.steps.append(
-                {
-                    "round": 1,
-                    "feedback": "incorrect",
-                    "feedback_source": "external_evaluator",
-                    "lesson_written": reflection.lesson,
-                }
-            )
-            if reflection_log:
-                reflection_log.write(
-                    json.dumps(
-                        {"question_id": example["id"], "lesson": reflection.lesson},
-                        ensure_ascii=False,
-                    )
-                    + "\n"
+        if args.method == "reflection":
+            if correct and args.correct_examples != "none":
+                # 只有当前题已被外部判对后，才允许进入后续题的正确样例库。
+                correct_example = agent.remember_correct(
+                    example["question"],
+                    raw_response,
+                    prediction or "",
+                    question_id=example["id"],
                 )
-                reflection_log.flush()
+                trace.steps.append(
+                    {
+                        "round": 1,
+                        "feedback": "correct",
+                        "feedback_source": "external_evaluator",
+                        "correct_example_written": correct_example.question_id,
+                    }
+                )
+            elif not correct:
+                # 评测器只传递“错误”这一信号，不把参考答案泄漏给 agent。
+                reflection = agent.reflect(
+                    example["question"], raw_response, question_id=example["id"]
+                )
+                trace.steps.append(
+                    {
+                        "round": 1,
+                        "feedback": "incorrect",
+                        "feedback_source": "external_evaluator",
+                        "lesson_written": reflection.lesson,
+                    }
+                )
+                if reflection_log:
+                    reflection_log.write(
+                        json.dumps(
+                            {
+                                "question_id": example["id"],
+                                "lesson": reflection.lesson,
+                            },
+                            ensure_ascii=False,
+                        )
+                        + "\n"
+                    )
+                    reflection_log.flush()
         return {
             "method": method,
             "id": example["id"],
@@ -407,7 +502,36 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "completed_at": datetime.now(UTC).isoformat(),
         "complete": len(records) == len(examples),
         "target_total": len(examples),
+        "feedback_source": {
+            "baseline": "none",
+            "self_refine": "self",
+            "reflection": "external_evaluator_memory",
+            "critic": "calculator",
+        }[args.method],
     }
+    if args.method == "self_refine":
+        summary["rounds"] = args.rounds
+    if args.method == "reflection":
+        summary.update(
+            {
+                "memory_retrieval": args.memory_retrieval,
+                "memory_top_k": args.memory_top_k,
+                "correct_examples": args.correct_examples,
+                "correct_top_k": (
+                    args.correct_top_k
+                    if args.correct_examples != "none"
+                    else None
+                ),
+                "embedding_model": (
+                    args.embedding_model
+                    if (
+                        args.memory_retrieval == "embedding"
+                        or args.correct_examples == "embedding"
+                    )
+                    else None
+                ),
+            }
+        )
 
     combined_summary: dict[str, Any] = {}
     if summary_path.exists() and not args.reset_results:
@@ -429,7 +553,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         encoding="utf-8",
     )
 
-    if summary["complete"]:
+    # 固定保留 CoT baseline 的失败案例，避免后续方法覆盖第 1 周产物。
+    if summary["complete"] and args.method == "baseline" and args.mode == "cot":
         write_failure_review(args.failure_review, records, summary)
     return summary
 
@@ -440,7 +565,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     parser.add_argument(
         "--method",
-        choices=("baseline", "self_refine", "reflection"),
+        choices=("baseline", "self_refine", "reflection", "critic"),
         default="baseline",
     )
     parser.add_argument(
@@ -506,6 +631,41 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_REFLECTION_LOG,
         help="Append generated lessons here when using --method reflection.",
+    )
+    parser.add_argument(
+        "--memory-retrieval",
+        choices=("recent", "embedding"),
+        default="recent",
+        help="Reflection lesson retrieval strategy.",
+    )
+    parser.add_argument(
+        "--memory-top-k",
+        type=int,
+        default=3,
+        help="Number of Reflection lessons injected into each solve prompt.",
+    )
+    parser.add_argument(
+        "--correct-examples",
+        choices=("none", "embedding"),
+        default="none",
+        help=(
+            "Retrieve earlier externally verified correct solutions as "
+            "few-shot examples for Reflection."
+        ),
+    )
+    parser.add_argument(
+        "--correct-top-k",
+        type=int,
+        default=3,
+        help="Number of verified correct examples injected into each prompt.",
+    )
+    parser.add_argument(
+        "--embedding-model",
+        default="local-hash",
+        help=(
+            "Embedding model for reflection retrieval. Use local-hash for "
+            "offline retrieval, or a Sentence-Transformers model/path."
+        ),
     )
     parser.add_argument(
         "--resume",
