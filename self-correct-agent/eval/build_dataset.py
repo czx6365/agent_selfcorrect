@@ -8,9 +8,9 @@ import random
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parent
-DEFAULT_SOURCE = ROOT / "datasets" / "gsm8k" / "test.parquet"
-DEFAULT_OUTPUT = ROOT / "dataset.jsonl"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_SOURCE = PROJECT_ROOT / "data" / "datasets" / "gsm8k" / "test.parquet"
+DEFAULT_OUTPUT = PROJECT_ROOT / "data" / "dataset.jsonl"
 
 
 def build_dataset(source: Path, output: Path, sample_size: int, seed: int) -> None:

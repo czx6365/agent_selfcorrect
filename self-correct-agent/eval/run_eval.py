@@ -21,11 +21,11 @@ from eval.llm_client import (
 from eval.metrics import accuracy, exact_match, extract_gsm8k_answer
 from agents.reflection import CorrectExample, Reflection, ReflectionAgent
 
-ROOT = Path(__file__).resolve().parent
-DEFAULT_DATASET = ROOT / "dataset.jsonl"
-DEFAULT_RESULTS_DIR = ROOT / "results"
-DEFAULT_FAILURE_REVIEW = ROOT.parent / "failure_review.md"
-DEFAULT_REFLECTION_LOG = ROOT.parent / "logs" / "reflection_log.jsonl"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_DATASET = PROJECT_ROOT / "data" / "dataset.jsonl"
+DEFAULT_RESULTS_DIR = PROJECT_ROOT / "results"
+DEFAULT_FAILURE_REVIEW = PROJECT_ROOT / "failure_review.md"
+DEFAULT_REFLECTION_LOG = PROJECT_ROOT / "logs" / "reflection_log.jsonl"
 RECORDS_FILENAME = "baseline_records.jsonl"
 SUMMARY_FILENAME = "baseline_summary.json"
 

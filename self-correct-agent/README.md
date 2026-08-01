@@ -15,6 +15,11 @@ self-correct-agent/
   tools/
     calculator.py
     code_runner.py
+  data/
+    dataset.jsonl
+    datasets/
+      gsm8k/
+      humaneval/
   eval/
     download_data.py
     build_dataset.py
@@ -23,12 +28,14 @@ self-correct-agent/
     run_eval.py
     run_code_eval.py
     build_evaluation_report.py
+    export_logs.py
+  results/
+    baseline_records.jsonl
+    baseline_summary.json
+    code_records.jsonl
+    code_summary.json
     evaluation_report.md
     when_correction_helps.svg
-    datasets/
-      gsm8k/
-      humaneval/
-    results/
   logs/
   ../docs/
   requirements.txt
@@ -71,10 +78,20 @@ export OPENAI_BASE_URL="https://api.openai.com/v1"
 .venv/bin/python main.py eval --provider anthropic --method baseline --mode cot
 ```
 
-每次运行只会更新两份结果文件：
+### 单题求解入口
 
-- `eval/results/baseline_records.jsonl`：三种方法的逐题预测、原始回答与 trace。
-- `eval/results/baseline_summary.json`：可复现实验配置与方法对比统计。
+```bash
+.venv/bin/python main.py solve "小明有3个苹果，又买了2袋每袋4个，一共有几个苹果？" --method baseline --mode cot
+.venv/bin/python main.py solve "小明有3个苹果，又买了2袋每袋4个，一共有几个苹果？" --method self_refine --rounds 2 --json
+.venv/bin/python main.py solve "小明有3个苹果，又买了2袋每袋4个，一共有几个苹果？" --method critic
+```
+
+`solve` 会打印抽取出的最终数字，并把完整 trace 追加写入 `logs/solve_trace.jsonl`。`--json` 可直接查看本次求解的完整记录。
+
+每次运行只会更新这些结果文件：
+
+- `results/baseline_records.jsonl`：三种方法的逐题预测、原始回答与 trace。
+- `results/baseline_summary.json`：可复现实验配置与方法对比统计。
 - `failure_review.md`：最多五个实际失败案例；明确标注单轮结果无法区分“能力不够”和“缺少检查”。
 
 ### 本地评测
@@ -184,11 +201,11 @@ HumanEval 前 100 题、Qwen3-8B Q4、本地 llama-server、`temperature=0`、`m
 | CoT-Repair（CoT 初稿 + 单测反馈修 1 轮） | 85 / 100 | 85.0% |
 | Best-of 已跑方法（单测选择任一通过候选） | 88 / 100 | 88.0% |
 
-CoT 相对 Direct 修复 4 题、退化 1 题；Self-Repair 相对 Direct 修复 3 题、退化 0 题。CoT-Repair 目前没有超过 CoT，说明“已有错误 CoT 思路 + 一轮 traceback 修复”不一定能跳出原错误算法。`eval/results/code_summary.json` 会保存逐方法统计和 pairwise comparison。
+CoT 相对 Direct 修复 4 题、退化 1 题；Self-Repair 相对 Direct 修复 3 题、退化 0 题。CoT-Repair 目前没有超过 CoT，说明“已有错误 CoT 思路 + 一轮 traceback 修复”不一定能跳出原错误算法。`results/code_summary.json` 会保存逐方法统计和 pairwise comparison。
 
 ## 第 4–5 周：工具反馈与关键实验
 
-CRITIC 的确定性工具集中在 `tools/`：数学题用安全 AST 计算器，代码题在临时子进程中运行 HumanEval 官方单测并返回 traceback 与断言诊断。完整的“自评反馈 vs 工具反馈”对照、标准答案泄漏检查和核心图见 [`eval/evaluation_report.md`](eval/evaluation_report.md)。
+CRITIC 的确定性工具集中在 `tools/`：数学题用安全 AST 计算器，代码题在临时子进程中运行 HumanEval 官方单测并返回 traceback 与断言诊断。完整的“自评反馈 vs 工具反馈”对照、标准答案泄漏检查和核心图见 [`results/evaluation_report.md`](results/evaluation_report.md)。
 
 不同轮数会保存为独立方法名（如 `self_refine_r2`、`code_self_repair_r2`），不会覆盖 1 轮结果。跑完新实验后执行：
 
@@ -196,6 +213,28 @@ CRITIC 的确定性工具集中在 `tools/`：数学题用安全 AST 计算器�
 .venv/bin/python eval/build_evaluation_report.py
 ```
 
-即可从两份 summary/records 重新生成报告与 `eval/when_correction_helps.svg`。
+即可从两份 summary/records 重新生成报告与 `results/when_correction_helps.svg`。
 
-正式 GSM8K baseline 显式关闭 DeepSeek 的隐藏思考（`ANTHROPIC_THINKING=disabled`），因此温度 `0` 能生效，且“直接作答 vs 可见逐步推理”只比较提示方式。OpenAI-compatible 请求使用种子 `42`；请求会以内容哈希缓存到 `eval/cache/`，同一配置重复运行不会重复扣费。
+正式 GSM8K baseline 显式关闭 DeepSeek 的隐藏思考（`ANTHROPIC_THINKING=disabled`），因此温度 `0` 能生效，且“直接作答 vs 可见逐步推理”只比较提示方式。OpenAI-compatible 请求使用种子 `42`；请求会以内容哈希缓存到 `.cache/llm/`，同一配置重复运行不会重复扣费。
+
+如果某次实验中断，先恢复本地 LLM 服务，再用相同参数加 `--resume` 续跑。例如：
+
+```bash
+.venv/bin/python main.py eval --provider local --method self_refine --rounds 3 --max-tokens 512 --workers 4 --resume
+```
+
+若代码实验结果里出现运行级 `error`，通常是 LLM 端点不可用；恢复服务后重新运行同一方法即可覆盖该方法的旧记录。
+
+## 日志与最终材料
+
+评测的完整逐题轨迹保存在 `results/*_records.jsonl`。交付前可统一导出到最终日志：
+
+```bash
+.venv/bin/python eval/export_logs.py
+```
+
+补充材料：
+
+- `../docs/paper_notes.md`：论文阅读笔记。
+- `../docs/research_proposal.md`：1 页科研提案。
+- `../docs/demo_script.md`：3 分钟演示稿。

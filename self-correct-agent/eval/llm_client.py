@@ -51,7 +51,7 @@ class OpenAICompatibleClient:
         self.temperature = temperature
         self.seed = seed
         self.max_tokens = max_tokens
-        self.cache_dir = cache_dir or Path(__file__).resolve().parent / "cache"
+        self.cache_dir = cache_dir or Path(__file__).resolve().parent.parent / ".cache" / "llm"
         self.timeout_seconds = timeout_seconds
 
         if not self.api_key:
@@ -156,7 +156,7 @@ class AnthropicCompatibleClient:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.thinking = thinking or os.getenv("ANTHROPIC_THINKING") or "disabled"
-        self.cache_dir = cache_dir or Path(__file__).resolve().parent / "cache"
+        self.cache_dir = cache_dir or Path(__file__).resolve().parent.parent / ".cache" / "llm"
 
         if not self.auth_token:
             raise LLMConfigurationError("Set ANTHROPIC_AUTH_TOKEN before running evaluation.")

@@ -106,22 +106,26 @@
 agent_selfcorrect/
   README.md
   docs/
-    project_brief.md                 # 项目任务说明
     paper_notes.md                   # 论文阅读笔记
+    research_proposal.md             # 科研提案
+    demo_script.md                   # 演示稿
     echo_repro_to_selfcorrect.md     # 从 ECHO-Repro 到 SelfCorrect 的研究衔接
     papers/                          # 本地论文 PDF
   self-correct-agent/
     main.py                          # GSM8K CLI 入口
     agents/                          # baseline / self_refine / reflection / critic
     tools/                           # calculator / code_runner
-    eval/
+    data/                            # 数据集与原始 parquet
       dataset.jsonl                  # GSM8K 100 题子集
+      datasets/
+    eval/
       run_eval.py                    # 数学评测
       run_code_eval.py               # HumanEval 代码评测
       build_evaluation_report.py     # 生成报告和图
+      export_logs.py                 # 导出统一日志
+    results/                         # records、summary、报告与图
       evaluation_report.md           # 第 4-5 周实验报告
       when_correction_helps.svg      # 核心实验图
-      results/                       # records 与 summary
     logs/                            # solve trace 与 reflection log
     failure_review.md                # GSM8K baseline 失败案例
     requirements.txt
@@ -172,12 +176,12 @@ llama-server -m "$QWEN_GGUF_PATH" \
 
 ## 主要产物
 
-- `self-correct-agent/eval/results/baseline_records.jsonl`：GSM8K 逐题记录。
-- `self-correct-agent/eval/results/baseline_summary.json`：GSM8K 汇总结果和 pairwise comparison。
-- `self-correct-agent/eval/results/code_records.jsonl`：HumanEval 逐题记录。
-- `self-correct-agent/eval/results/code_summary.json`：HumanEval 汇总结果和 Best-of 统计。
-- `self-correct-agent/eval/evaluation_report.md`：第 4-5 周核心评测报告。
-- `self-correct-agent/eval/when_correction_helps.svg`：核心实验图。
+- `self-correct-agent/results/baseline_records.jsonl`：GSM8K 逐题记录。
+- `self-correct-agent/results/baseline_summary.json`：GSM8K 汇总结果和 pairwise comparison。
+- `self-correct-agent/results/code_records.jsonl`：HumanEval 逐题记录。
+- `self-correct-agent/results/code_summary.json`：HumanEval 汇总结果和 Best-of 统计。
+- `self-correct-agent/results/evaluation_report.md`：第 4-5 周核心评测报告。
+- `self-correct-agent/results/when_correction_helps.svg`：核心实验图。
 - `self-correct-agent/failure_review.md`：CoT baseline 失败样例。
 - `docs/paper_notes.md`：论文阅读笔记。
 

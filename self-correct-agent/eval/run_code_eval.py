@@ -25,9 +25,8 @@ from eval.llm_client import (
 from tools.code_runner import run_unit_tests
 
 
-ROOT = Path(__file__).resolve().parent
-DEFAULT_SOURCE = ROOT / "datasets" / "humaneval" / "test.parquet"
-DEFAULT_RESULTS_DIR = ROOT / "results"
+DEFAULT_SOURCE = PROJECT_ROOT / "data" / "datasets" / "humaneval" / "test.parquet"
+DEFAULT_RESULTS_DIR = PROJECT_ROOT / "results"
 RECORDS_FILENAME = "code_records.jsonl"
 SUMMARY_FILENAME = "code_summary.json"
 

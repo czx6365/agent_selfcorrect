@@ -44,7 +44,7 @@ def main() -> None:
     parser.add_argument(
         "--root",
         type=Path,
-        default=Path(__file__).resolve().parent / "datasets",
+        default=Path(__file__).resolve().parent.parent / "data" / "datasets",
     )
     parser.add_argument(
         "--dataset",

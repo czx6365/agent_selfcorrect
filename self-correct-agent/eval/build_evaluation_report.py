@@ -9,13 +9,13 @@ from pathlib import Path
 from typing import Any
 
 
-ROOT = Path(__file__).resolve().parent
-DEFAULT_MATH_SUMMARY = ROOT / "results" / "baseline_summary.json"
-DEFAULT_CODE_SUMMARY = ROOT / "results" / "code_summary.json"
-DEFAULT_MATH_RECORDS = ROOT / "results" / "baseline_records.jsonl"
-DEFAULT_CODE_RECORDS = ROOT / "results" / "code_records.jsonl"
-DEFAULT_REPORT = ROOT / "evaluation_report.md"
-DEFAULT_CHART = ROOT / "when_correction_helps.svg"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_MATH_SUMMARY = PROJECT_ROOT / "results" / "baseline_summary.json"
+DEFAULT_CODE_SUMMARY = PROJECT_ROOT / "results" / "code_summary.json"
+DEFAULT_MATH_RECORDS = PROJECT_ROOT / "results" / "baseline_records.jsonl"
+DEFAULT_CODE_RECORDS = PROJECT_ROOT / "results" / "code_records.jsonl"
+DEFAULT_REPORT = PROJECT_ROOT / "results" / "evaluation_report.md"
+DEFAULT_CHART = PROJECT_ROOT / "results" / "when_correction_helps.svg"
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -132,12 +132,19 @@ def build_report(args: argparse.Namespace) -> None:
     code_records = load_jsonl(args.code_records)
     math_methods = math_summary["methods"]
     code_methods = code_summary["methods"]
+    invalid_code_methods = {
+        record["method"]
+        for record in code_records
+        if record.get("status") == "error"
+    }
 
     math_variants = sorted(
         name for name in math_methods if name == "self_refine" or name.startswith("self_refine_r")
     )
     code_variants = sorted(
-        name for name in code_methods if name.startswith("code_self_repair")
+        name
+        for name in code_methods
+        if name.startswith("code_self_repair") and name not in invalid_code_methods
     )
 
     table_rows: list[str] = []
@@ -255,6 +262,15 @@ def build_report(args: argparse.Namespace) -> None:
         "",
         "## 复现实验",
         "",
+        *(
+            [
+                "以下代码实验方法包含运行级 `error` 记录，通常表示 LLM 端点不可用或调用失败；报告已跳过这些方法，避免把环境故障当作模型效果："
+                f" {', '.join(f'`{name}`' for name in sorted(invalid_code_methods))}。",
+                "",
+            ]
+            if invalid_code_methods
+            else []
+        ),
         "```bash",
         "# 无外部反馈：数学自评 2、3 轮",
         ".venv/bin/python main.py eval --provider local --method self_refine --rounds 2 --max-tokens 512 --workers 4",
