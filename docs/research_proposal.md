@@ -19,7 +19,7 @@ Self-Refine 和 Reflexion 说明，自然语言反馈和记忆可以改善模型
 项目实现四类统一接口的 agent：
 
 - `baseline`：直接作答或 CoT 作答，不自查。
-- `self_refine`：初稿、自评、改写，比较 1 到 3 轮。
+- `self_refine`：初稿、自评、改写；保留旧版 r1，并新增只有 calculator 证明算术不一致时才改写的门控模式。
 - `reflection`：失败后写入 lesson，后续题检索历史经验。
 - `critic`：用计算器或单元测试产生工具反馈，再决定是否修复。
 
@@ -27,7 +27,7 @@ Self-Refine 和 Reflexion 说明，自然语言反馈和记忆可以改善模型
 
 ## 初步结果
 
-当前实验显示：GSM8K Direct 为 38%，CoT 为 94%；Self-Refine 1 轮降到 90%，2 轮为 92%；计算器 CRITIC 为 90%。这说明数学题中，模型自评和局部算术验证都可能破坏已经正确的题意建模。HumanEval Direct 为 82%，单元测试修复 1 轮和 2 轮均为 85%，且相对 Direct 改错为 0；这说明外部测试反馈更适合做门控修复。使用此前外部判对的相似正确样例检索时，GSM8K 达到 96%，说明可靠历史经验可能比空泛反思更有价值。
+当前实验显示：GSM8K Direct 为 38%，CoT 为 94%；旧版 Self-Refine 1 轮降到 90%；计算器 CRITIC 为 90%。这说明数学题中，模型自评和局部算术验证都可能破坏已经正确的题意建模。HumanEval Direct 为 82%，单元测试修复 1 轮和 2 轮均为 85%，且相对 Direct 改错为 0；这说明外部测试反馈更适合做门控修复。使用此前外部判对的相似正确样例检索时，GSM8K 达到 96%，说明可靠历史经验可能比空泛反思更有价值。
 
 ## 预期贡献
 
@@ -35,4 +35,4 @@ Self-Refine 和 Reflexion 说明，自然语言反馈和记忆可以改善模型
 
 ## 后续工作
 
-下一步将补齐 3 轮实验，加入等成本 self-consistency baseline，并进一步比较空话 lesson、具体 lesson、带错误类型标签 lesson 三种反思写法，检验经验记忆是否真的能跨题迁移。
+下一步将重新运行 calculator 门控 Self-Refine，并与已保存的旧版 r1 对比；同时加入等成本 self-consistency baseline，并进一步比较空话 lesson、具体 lesson、带错误类型标签 lesson 三种反思写法，检验经验记忆是否真的能跨题迁移。

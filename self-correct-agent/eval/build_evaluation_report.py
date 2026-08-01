@@ -74,6 +74,12 @@ def _method_rate(methods: dict[str, Any], name: str) -> float | None:
     return item.get("accuracy", item.get("pass_rate"))
 
 
+def _self_refine_feedback_label(method: str) -> str:
+    if method == "self_refine_calculator":
+        return "自评+计算器门控"
+    return "旧版模型自评"
+
+
 def build_chart(path: Path, rows: list[tuple[str, float, str]]) -> None:
     """生成无第三方依赖的横向条形图。"""
     width = 900
@@ -138,9 +144,11 @@ def build_report(args: argparse.Namespace) -> None:
         if record.get("status") == "error"
     }
 
-    math_variants = sorted(
-        name for name in math_methods if name == "self_refine" or name.startswith("self_refine_r")
-    )
+    math_variants = [
+        name
+        for name in ("self_refine", "self_refine_calculator")
+        if name in math_methods
+    ]
     code_variants = sorted(
         name
         for name in code_methods
@@ -153,7 +161,7 @@ def build_report(args: argparse.Namespace) -> None:
         comparison = pairwise(math_records, "baseline_cot", name, "correct")
         fixed, regressed = comparison_text(comparison)
         table_rows.append(
-            f"| GSM8K | 无（模型自评） | {rounds} | `{name}` | "
+            f"| GSM8K | {_self_refine_feedback_label(name)} | {rounds} | `{name}` | "
             f"{percent(_method_rate(math_methods, name))} | {fixed} | {regressed} |"
         )
     critic_comparison = pairwise(math_records, "baseline_cot", "critic", "correct")
@@ -174,11 +182,18 @@ def build_report(args: argparse.Namespace) -> None:
     chart_rows = [
         ("GSM8K Direct baseline", _method_rate(math_methods, "baseline_direct") or 0, "baseline"),
         ("GSM8K CoT baseline", _method_rate(math_methods, "baseline_cot") or 0, "baseline"),
-        ("GSM8K Self-Refine r1", _method_rate(math_methods, "self_refine") or 0, "self"),
     ]
-    if "self_refine_r2" in math_methods:
+    if "self_refine" in math_methods:
         chart_rows.append(
-            ("GSM8K Self-Refine r2", _method_rate(math_methods, "self_refine_r2") or 0, "self")
+            ("GSM8K Self-Refine original", _method_rate(math_methods, "self_refine") or 0, "self")
+        )
+    if "self_refine_calculator" in math_methods:
+        chart_rows.append(
+            (
+                "GSM8K Self-Refine calculator-gated",
+                _method_rate(math_methods, "self_refine_calculator") or 0,
+                "tool",
+            )
         )
     chart_rows.extend(
         [
@@ -210,6 +225,9 @@ def build_report(args: argparse.Namespace) -> None:
     build_chart(args.chart, chart_rows)
 
     self_compare = pairwise(math_records, "baseline_cot", "self_refine", "correct")
+    gated_self_compare = pairwise(
+        math_records, "baseline_cot", "self_refine_calculator", "correct"
+    )
     code_compare = pairwise(code_records, "code_direct", "code_self_repair", "passed")
     lines = [
         "# 第 4–5 周评测报告：自我纠错何时有用",
@@ -235,9 +253,22 @@ def build_report(args: argparse.Namespace) -> None:
         "## 自评反馈 vs 工具反馈",
         "",
         (
-            f"- 无外部信号的 Self-Refine（1 轮）为 90%，相对 CoT 改对 "
+            "- 旧版模型自评的 Self-Refine（1 轮）为 "
+            f"{percent(_method_rate(math_methods, 'self_refine'))}，相对 CoT 改对 "
             f"{self_compare['fixed'] if self_compare else '-'} 题、改错 "
             f"{self_compare['regressed'] if self_compare else '-'} 题。模型会把听起来合理的自我批评当成事实，因此可能越改越差。"
+        ),
+        *(
+            [
+                (
+                    "- 计算器门控 Self-Refine（1 轮）为 "
+                    f"{percent(_method_rate(math_methods, 'self_refine_calculator'))}，相对 CoT 改对 "
+                    f"{gated_self_compare['fixed'] if gated_self_compare else '-'} 题、改错 "
+                    f"{gated_self_compare['regressed'] if gated_self_compare else '-'} 题。它只在算术被工具证伪时采纳修改。"
+                )
+            ]
+            if "self_refine_calculator" in math_methods
+            else []
         ),
         (
             f"- HumanEval 单测修复为 85%，相对 Direct 改对 "
@@ -252,13 +283,13 @@ def build_report(args: argparse.Namespace) -> None:
         "自我纠错是否有用，关键不在于多生成一轮，而在于反馈是否可靠、具体，并且能在不知道标准答案的情况下决定是否采纳修改。代码题比数学题更容易受益，是因为单元测试同时提供明确的对错信号和定位线索；数学计算器通常只能检查局部算术，无法检查题意建模。",
         "",
         (
-            "轮数对照为：数学 CoT 0 轮 94%、Self-Refine 1 轮 90%、2 轮 "
-            f"{percent(_method_rate(math_methods, 'self_refine_r2'))}；代码 Direct 0 轮 82%、"
+            "轮数对照为：数学 CoT 0 轮 94%、旧版 Self-Refine 1 轮 "
+            f"{percent(_method_rate(math_methods, 'self_refine'))}；代码 Direct 0 轮 82%、"
             "单测修复 1 轮 85%、2 轮 "
             f"{percent(_method_rate(code_methods, 'code_self_repair_r2'))}。"
             "这支持“失败才修改、通过就停止”的门控策略；单纯增加轮数没有带来单调收益。"
         ),
-        "不同轮数使用独立结果名（如 `self_refine_r2`、`code_self_repair_r2`），因此后续补跑 3 轮不会覆盖现有结果。",
+        "Self-Refine 保留两种一轮模式：旧版模型自评与计算器门控；代码修复的不同轮数仍使用独立结果名（如 `code_self_repair_r2`）。",
         "",
         "## 复现实验",
         "",
@@ -272,9 +303,11 @@ def build_report(args: argparse.Namespace) -> None:
             else []
         ),
         "```bash",
-        "# 无外部反馈：数学自评 2、3 轮",
-        ".venv/bin/python main.py eval --provider local --method self_refine --rounds 2 --max-tokens 512 --workers 4",
-        ".venv/bin/python main.py eval --provider local --method self_refine --rounds 3 --max-tokens 512 --workers 4",
+        "# 旧版 Self-Refine r1",
+        ".venv/bin/python main.py eval --provider local --method self_refine --self-refine-mode original --rounds 1 --max-tokens 512 --workers 4",
+        "",
+        "# 证据门控 Self-Refine：只有 calculator 证明算术不一致才改写",
+        ".venv/bin/python main.py eval --provider local --method self_refine --self-refine-mode calculator --rounds 1 --max-tokens 512 --workers 4",
         "",
         "# 外部反馈：代码单测修复 2、3 轮",
         ".venv/bin/python eval/run_code_eval.py --provider local --mode self_repair --repair-rounds 2 --limit 100 --max-tokens 768 --workers 1",

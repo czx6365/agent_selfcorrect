@@ -82,7 +82,7 @@ export OPENAI_BASE_URL="https://api.openai.com/v1"
 
 ```bash
 .venv/bin/python main.py solve "小明有3个苹果，又买了2袋每袋4个，一共有几个苹果？" --method baseline --mode cot
-.venv/bin/python main.py solve "小明有3个苹果，又买了2袋每袋4个，一共有几个苹果？" --method self_refine --rounds 2 --json
+.venv/bin/python main.py solve "小明有3个苹果，又买了2袋每袋4个，一共有几个苹果？" --method self_refine --rounds 1 --json
 .venv/bin/python main.py solve "小明有3个苹果，又买了2袋每袋4个，一共有几个苹果？" --method critic
 ```
 
@@ -114,10 +114,11 @@ export OPENAI_BASE_URL="https://api.openai.com/v1"
 ## 第 2 周：Self-Refine
 
 ```bash
-.venv/bin/python main.py eval --provider local --method self_refine --rounds 1 --max-tokens 512 --workers 4
+.venv/bin/python main.py eval --provider local --method self_refine --self-refine-mode original --rounds 1 --max-tokens 512 --workers 4
+.venv/bin/python main.py eval --provider local --method self_refine --self-refine-mode calculator --rounds 1 --max-tokens 512 --workers 4
 ```
 
-Self-Refine 先复用 CoT 初稿，再做不含参考答案的自评和改写。`baseline_summary.json` 的 `self_refine` 字段会报告 CoT 到 Self-Refine 的改对/改错，并单列 58 个 CoT 修复题被保留或改错的数量。
+Self-Refine 先复用 CoT 初稿，再做不含参考答案的自评。当前保留两种一轮模式：`--self-refine-mode original` 是旧版 r1，只要模型自评指出错误就改写，结果写为 `self_refine`；`--self-refine-mode calculator` 只有在自评给出 calculator 可验证的算术证据，且计算器证明该算式与声称结果不一致时才允许改写，结果写为 `self_refine_calculator`。`baseline_summary.json` 的 `self_refine` 字段会报告 CoT 到各 Self-Refine 模式的改对/改错。
 
 ## 第 3 周：Reflection
 
@@ -168,8 +169,7 @@ Reflection 可按时间读取最近 lesson，或用 embedding 从已完成错题
 |---|---:|---:|
 | Direct | 38 / 100 | 38.0% |
 | CoT | 94 / 100 | 94.0% |
-| Self-Refine（1 轮） | 90 / 100 | 90.0% |
-| Self-Refine（2 轮） | 92 / 100 | 92.0% |
+| 旧版 Self-Refine（1 轮） | 90 / 100 | 90.0% |
 | Reflection（旧版 recent） | 94 / 100 | 94.0% |
 | Critic（计算器 VERIFY） | 90 / 100 | 90.0% |
 | Reflection + local-hash embedding | 89 / 100 | 89.0% |
@@ -207,7 +207,7 @@ CoT 相对 Direct 修复 4 题、退化 1 题；Self-Repair 相对 Direct 修复
 
 CRITIC 的确定性工具集中在 `tools/`：数学题用安全 AST 计算器，代码题在临时子进程中运行 HumanEval 官方单测并返回 traceback 与断言诊断。完整的“自评反馈 vs 工具反馈”对照、标准答案泄漏检查和核心图见 [`results/evaluation_report.md`](results/evaluation_report.md)。
 
-不同轮数会保存为独立方法名（如 `self_refine_r2`、`code_self_repair_r2`），不会覆盖 1 轮结果。跑完新实验后执行：
+数学 Self-Refine 现在保留旧版 r1 和 calculator 门控两种一轮模式；代码修复的不同轮数仍保存为独立方法名（如 `code_self_repair_r2`）。跑完新实验后执行：
 
 ```bash
 .venv/bin/python eval/build_evaluation_report.py
@@ -220,7 +220,7 @@ CRITIC 的确定性工具集中在 `tools/`：数学题用安全 AST 计算器�
 如果某次实验中断，先恢复本地 LLM 服务，再用相同参数加 `--resume` 续跑。例如：
 
 ```bash
-.venv/bin/python main.py eval --provider local --method self_refine --rounds 3 --max-tokens 512 --workers 4 --resume
+.venv/bin/python main.py eval --provider local --method self_refine --self-refine-mode calculator --rounds 1 --max-tokens 512 --workers 4 --resume
 ```
 
 若代码实验结果里出现运行级 `error`，通常是 LLM 端点不可用；恢复服务后重新运行同一方法即可覆盖该方法的旧记录。

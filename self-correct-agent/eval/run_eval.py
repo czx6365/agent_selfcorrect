@@ -112,14 +112,11 @@ def compare_methods(
 def self_refine_report(records: list[dict[str, Any]]) -> dict[str, Any] | None:
     """分析 Self-Refine 相比 CoT 的修复与退化情况。"""
     cot_to_refine = compare_methods(records, "baseline_cot", "self_refine")
-    variants = sorted(
-        {
-            record["method"]
-            for record in records
-            if record["method"] == "self_refine"
-            or record["method"].startswith("self_refine_r")
-        }
-    )
+    variants = [
+        method
+        for method in ("self_refine", "self_refine_calculator")
+        if any(record["method"] == method for record in records)
+    ]
     by_round = {
         method: compare_methods(records, "baseline_cot", method)
         for method in variants
@@ -251,6 +248,8 @@ def write_failure_review(
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     """执行评测、保存记录并生成汇总结果。"""
+    if args.method == "self_refine" and args.rounds != 1:
+        raise ValueError("Self-Refine comparison supports only --rounds 1.")
     if args.method == "reflection" and args.workers != 1:
         raise ValueError("Reflection 必须使用 --workers 1，保证 memory 写入顺序可复现。")
     if args.method == "reflection" and args.memory_top_k < 1:
@@ -293,10 +292,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         method = f"baseline_{args.mode}"
         agent = BaselineAgent(client, mode=args.mode)
     elif args.method == "self_refine":
-        method = "self_refine"
-        if args.rounds != 1:
-            method = f"self_refine_r{args.rounds}"
-        agent = SelfRefineAgent(client, max_rounds=args.rounds)
+        method = (
+            "self_refine"
+            if args.self_refine_mode == "original"
+            else "self_refine_calculator"
+        )
+        agent = SelfRefineAgent(
+            client,
+            max_rounds=args.rounds,
+            mode=args.self_refine_mode,
+        )
     elif args.method == "critic":
         # CRITIC 只依赖本题的计算器反馈，因此可安全并发运行。
         method = "critic"
@@ -511,6 +516,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     }
     if args.method == "self_refine":
         summary["rounds"] = args.rounds
+        summary["self_refine_mode"] = args.self_refine_mode
+        summary["feedback_source"] = (
+            "self" if args.self_refine_mode == "original" else "self_with_calculator_gate"
+        )
     if args.method == "reflection":
         summary.update(
             {
@@ -578,7 +587,13 @@ def parse_args() -> argparse.Namespace:
         "--rounds",
         type=int,
         default=1,
-        help="Self-Refine critique/revision rounds.",
+        help="Self-Refine comparison supports only 1 round.",
+    )
+    parser.add_argument(
+        "--self-refine-mode",
+        choices=("original", "calculator"),
+        default="original",
+        help="Compare original Self-Refine r1 with calculator-gated Self-Refine.",
     )
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument(

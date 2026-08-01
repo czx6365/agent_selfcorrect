@@ -59,7 +59,11 @@ def build_agent(args: argparse.Namespace, client):
     if args.method == "baseline":
         return BaselineAgent(client, mode=args.mode)
     if args.method == "self_refine":
-        return SelfRefineAgent(client, max_rounds=args.rounds)
+        return SelfRefineAgent(
+            client,
+            max_rounds=args.rounds,
+            mode=args.self_refine_mode,
+        )
     if args.method == "critic":
         return CriticAgent(client)
     return ReflectionAgent(
@@ -84,7 +88,18 @@ def solve_main(argv: list[str]) -> None:
         default="baseline",
     )
     parser.add_argument("--mode", choices=("direct", "cot"), default="cot")
-    parser.add_argument("--rounds", type=int, default=1)
+    parser.add_argument(
+        "--rounds",
+        type=int,
+        default=1,
+        help="Self-Refine comparison supports only 1 round.",
+    )
+    parser.add_argument(
+        "--self-refine-mode",
+        choices=("original", "calculator"),
+        default="original",
+        help="Original Self-Refine r1 or calculator-gated Self-Refine.",
+    )
     parser.add_argument(
         "--provider",
         choices=("openai", "anthropic", "local"),
@@ -120,9 +135,7 @@ def solve_main(argv: list[str]) -> None:
     prediction = extract_gsm8k_answer(raw_response)
     trace.final_answer = prediction or ""
     method = trace.method
-    if args.method == "self_refine" and args.rounds != 1:
-        method = f"self_refine_r{args.rounds}"
-    elif args.method == "reflection":
+    if args.method == "reflection":
         method = f"reflection_{args.memory_retrieval}"
         if args.correct_examples != "none":
             method = f"{method}_correct_{args.correct_examples}"

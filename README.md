@@ -28,11 +28,11 @@
 
 主要发现：
 
-- 无外部反馈的 Self-Refine 不稳定。GSM8K 上 CoT 是 94%，Self-Refine 1 轮降到 90%，说明模型会把原本正确的答案改错。
+- 无证据门控的历史 Self-Refine 不稳定。GSM8K 上 CoT 是 94%，旧版 Self-Refine 1 轮降到 90%，说明模型会把原本正确的答案改错。当前实现保留旧版 r1 作为对照，并新增只有计算器证明算术不一致时才采纳修改的门控模式。
 - 代码题更容易从纠错中受益。HumanEval 上单元测试反馈把 Direct 从 82% 提升到 85%，且没有把已通过样例改坏。
 - 数学计算器反馈有局限。计算器只能验证算术表达式，不能判断模型是否正确理解题意，因此 CRITIC 没有超过 CoT。
 - 已验证正确样例检索最有效。Reflection + Sentence-Transformers 检索历史正确样例达到 96%，是当前 GSM8K 最好结果。
-- 增加轮数不保证单调收益。数学 Self-Refine 2 轮仍低于 CoT；代码 Self-Repair 2 轮没有超过 1 轮。
+- 增加轮数不保证单调收益。当前数学 Self-Refine 保留两种一轮模式用于对比；代码 Self-Repair 2 轮没有超过 1 轮。
 
 ## 实验结果
 
@@ -44,8 +44,7 @@
 |---|---:|---:|
 | Direct | 38 / 100 | 38.0% |
 | CoT | 94 / 100 | 94.0% |
-| Self-Refine 1 轮 | 90 / 100 | 90.0% |
-| Self-Refine 2 轮 | 92 / 100 | 92.0% |
+| 旧版 Self-Refine 1 轮 | 90 / 100 | 90.0% |
 | Reflection 旧版 recent | 94 / 100 | 94.0% |
 | CRITIC 计算器反馈 | 90 / 100 | 90.0% |
 | Reflection + local-hash embedding | 89 / 100 | 89.0% |
@@ -54,8 +53,7 @@
 关键对比：
 
 - CoT 相对 Direct：改对 58 题，改错 2 题。
-- Self-Refine 1 轮相对 CoT：改对 0 题，改错 4 题。
-- Self-Refine 2 轮相对 CoT：改对 2 题，改错 4 题。
+- 旧版 Self-Refine 1 轮相对 CoT：改对 0 题，改错 4 题。
 - 已验证正确样例检索相对 CoT：改对 2 题，改错 0 题。
 
 ### HumanEval 代码题
@@ -85,7 +83,8 @@
 |---|---|---|
 | Direct | 无 | 直接输出最终答案或代码 |
 | CoT | 无 | 显式逐步推理后输出答案 |
-| Self-Refine | 模型自评 | 初稿 -> 自我批评 -> 改写 |
+| Self-Refine original | 模型自评 | 初稿 -> 自我批评 -> 改写；对应旧版 r1 结果 `self_refine` |
+| Self-Refine calculator | 自评 + calculator 门控 | 初稿 -> 自我批评；只有计算器证明算术不一致才改写，结果写为 `self_refine_calculator` |
 | Reflection | 历史失败教训 | 外部判错后写 lesson，后续题目检索使用 |
 | CRITIC | 计算器 | 模型给出 `VERIFY` 表达式，由安全计算器检查 |
 | Self-Repair | 单元测试 | 代码失败后用 traceback、断言诊断修复 |
@@ -154,8 +153,8 @@ llama-server -m "$QWEN_GGUF_PATH" \
 ```bash
 .venv/bin/python main.py eval --provider local --method baseline --mode direct --max-tokens 512 --reset-results
 .venv/bin/python main.py eval --provider local --method baseline --mode cot --max-tokens 512
-.venv/bin/python main.py eval --provider local --method self_refine --rounds 1 --max-tokens 512
-.venv/bin/python main.py eval --provider local --method self_refine --rounds 2 --max-tokens 512
+.venv/bin/python main.py eval --provider local --method self_refine --self-refine-mode original --rounds 1 --max-tokens 512
+.venv/bin/python main.py eval --provider local --method self_refine --self-refine-mode calculator --rounds 1 --max-tokens 512
 .venv/bin/python main.py eval --provider local --method critic --max-tokens 512
 ```
 
@@ -200,7 +199,7 @@ llama-server -m "$QWEN_GGUF_PATH" \
 
 ## 下一步可扩展方向
 
-- 补跑 3 轮或更多轮数，画出更完整的收益递减曲线。
+- 重新运行 calculator-gated Self-Refine，和已保存的旧版 r1 对比“有工具证据才修改”是否能减少退化。
 - 加入等成本 self-consistency baseline，比较“多采样投票”和“多轮自我修改”。
 - 对 GSM8K 错误类型做人工标注，区分建模错误、算术错误、抽取错误。
 - 把 HumanEval 的单元测试反馈扩展到真实仓库 Issue / CI 修复任务。

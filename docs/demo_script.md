@@ -14,7 +14,7 @@
 
 我用了两个任务域。GSM8K 是小学数学题，答案容易判分，但没有天然外部验证；HumanEval 是代码题，可以直接跑单元测试。
 
-当前结果是：GSM8K Direct 只有 38%，CoT 到 94%；但 Self-Refine 1 轮反而降到 90%，2 轮是 92%。计算器 CRITIC 也是 90%，因为计算器只能检查算式，不能保证题意建模正确。HumanEval Direct 是 82%，单元测试修复到 85%，而且没有把已通过的题改错。最强的是检索此前外部判对的相似正确样例，GSM8K 到 96%。
+当前结果是：GSM8K Direct 只有 38%，CoT 到 94%；但旧版 Self-Refine 1 轮反而降到 90%。计算器 CRITIC 也是 90%，因为计算器只能检查算式，不能保证题意建模正确。HumanEval Direct 是 82%，单元测试修复到 85%，而且没有把已通过的题改错。最强的是检索此前外部判对的相似正确样例，GSM8K 到 96%。
 
 ## 2:00-2:30 失败案例
 
@@ -22,12 +22,13 @@
 
 ## 2:30-3:00 结论与下一步
 
-我的结论是：自我纠错的关键不是多生成几轮，而是反馈是否可靠，以及有没有不偷看标准答案的采纳规则。代码题因为单元测试能给明确信号，更适合工具型纠错；数学题的纯自评更容易帮倒忙。下一步我会补 3 轮实验、加入等成本 self-consistency baseline，并比较空话反思和具体反思的差异。
+我的结论是：自我纠错的关键不是多生成几轮，而是反馈是否可靠，以及有没有不偷看标准答案的采纳规则。代码题因为单元测试能给明确信号，更适合工具型纠错；数学题的纯自评更容易帮倒忙。下一步我会保留旧版 r1，并重新运行 calculator 门控 Self-Refine，比较“模型说要改”和“工具证明后才改”的差异。
 
 ## 可演示命令
 
 ```bash
 .venv/bin/python main.py solve "小明有3个苹果，又买了2袋每袋4个，一共有几个苹果？" --method baseline --mode cot
-.venv/bin/python main.py eval --method self_refine --rounds 3 --provider local --max-tokens 512 --workers 4
+.venv/bin/python main.py eval --method self_refine --self-refine-mode original --rounds 1 --provider local --max-tokens 512 --workers 4
+.venv/bin/python main.py eval --method self_refine --self-refine-mode calculator --rounds 1 --provider local --max-tokens 512 --workers 4
 .venv/bin/python eval/build_evaluation_report.py
 ```
