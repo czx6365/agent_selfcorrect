@@ -135,6 +135,48 @@
       "correct_examples": "embedding",
       "correct_top_k": 3,
       "embedding_model": "sentence-transformers/all-MiniLM-L6-v2"
+    },
+    "self_refine_calculator": {
+      "total": 100,
+      "correct": 94,
+      "incorrect": 6,
+      "accuracy": 0.94,
+      "method": "self_refine_calculator",
+      "dataset": "/Users/czx/Desktop/agent_selfcorrect/self-correct-agent/data/dataset.jsonl",
+      "dataset_seed": 42,
+      "llm_model": "qwen3-8b",
+      "provider": "local",
+      "temperature": 0.0,
+      "llm_seed": 42,
+      "max_tokens": 512,
+      "thinking": null,
+      "completed_at": "2026-08-01T03:46:43.377311+00:00",
+      "complete": true,
+      "target_total": 100,
+      "feedback_source": "self_with_calculator_gate",
+      "rounds": 1,
+      "self_refine_mode": "calculator"
+    },
+    "self_refine_gate": {
+      "total": 100,
+      "correct": 94,
+      "incorrect": 6,
+      "accuracy": 0.94,
+      "method": "self_refine_gate",
+      "dataset": "/Users/czx/Desktop/agent_selfcorrect/self-correct-agent/data/dataset.jsonl",
+      "dataset_seed": 42,
+      "llm_model": "qwen3-8b",
+      "provider": "local",
+      "temperature": 0.0,
+      "llm_seed": 42,
+      "max_tokens": 512,
+      "thinking": null,
+      "completed_at": "2026-08-12T16:41:58.768306+00:00",
+      "complete": true,
+      "target_total": 100,
+      "feedback_source": "self_with_decision_gate",
+      "rounds": 1,
+      "self_refine_mode": "decision_gate"
     }
   },
   "comparison": {
@@ -155,6 +197,18 @@
         "kept_correct": 90,
         "fixed": 0,
         "regressed": 4,
+        "wrong_both": 6
+      },
+      "self_refine_calculator": {
+        "kept_correct": 94,
+        "fixed": 0,
+        "regressed": 0,
+        "wrong_both": 6
+      },
+      "self_refine_gate": {
+        "kept_correct": 94,
+        "fixed": 0,
+        "regressed": 0,
         "wrong_both": 6
       }
     },
@@ -188,5 +242,5 @@
       "wrong_both": 3
     }
   },
-  "updated_at": "2026-07-18T13:04:53.160246+00:00"
+  "updated_at": "2026-08-12T16:41:58.787851+00:00"
 }

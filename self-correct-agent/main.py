@@ -96,9 +96,11 @@ def solve_main(argv: list[str]) -> None:
     )
     parser.add_argument(
         "--self-refine-mode",
-        choices=("original", "calculator"),
+        choices=("original", "calculator", "decision_gate"),
         default="original",
-        help="Original Self-Refine r1 or calculator-gated Self-Refine.",
+        help=(
+            "Original, calculator-gated, or decision-gated Self-Refine."
+        ),
     )
     parser.add_argument(
         "--provider",

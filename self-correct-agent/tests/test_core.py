@@ -102,6 +102,63 @@ class CoreBehaviorTests(unittest.TestCase):
         self.assertEqual(trace.steps[1]["feedback_source"], "calculator")
         self.assertEqual(trace.steps[1]["evidence"]["status"], "verified_mismatch")
 
+    def test_decision_gate_rejects_vague_answer_change(self) -> None:
+        client = SequenceClient(
+            [
+                "Draft solution\nFINAL: 80",
+                "The answer might be wrong. Check carefully.",
+                "Revised solution\nFINAL: 100",
+                json.dumps(
+                    {
+                        "draft_confidence": 60,
+                        "revised_confidence": 65,
+                        "revision_risk": "high",
+                        "reason": "The critique is not specific.",
+                    }
+                ),
+            ]
+        )
+        agent = SelfRefineAgent(client, mode="decision_gate")
+
+        response, trace = agent.solve("How many?", question_id="unit_gate_reject")
+
+        self.assertEqual(response, "Draft solution\nFINAL: 80")
+        self.assertEqual(trace.method, "self_refine_gate")
+        self.assertEqual(len(client.prompts), 4)
+        self.assertEqual(trace.steps[1]["feedback_source"], "decision_gate_rejected")
+        self.assertEqual(trace.steps[1]["gate"]["decision"], "reject")
+        self.assertLess(trace.steps[1]["gate"]["score"], 2)
+
+    def test_decision_gate_accepts_verified_arithmetic_mismatch(self) -> None:
+        client = SequenceClient(
+            [
+                "Bad arithmetic: 2 + 2 = 5\nFINAL: 5",
+                "REVISE\nCHECK: 2 + 2\nCLAIMED: 5\nREASON: calculator mismatch",
+                "Corrected arithmetic: 2 + 2 = 4\nFINAL: 4",
+                json.dumps(
+                    {
+                        "draft_confidence": 30,
+                        "revised_confidence": 90,
+                        "revision_risk": "low",
+                        "reason": "The calculator-backed critique is specific.",
+                    }
+                ),
+            ]
+        )
+        agent = SelfRefineAgent(client, mode="decision_gate")
+
+        response, trace = agent.solve("How many?", question_id="unit_gate_accept")
+
+        self.assertEqual(response, "Corrected arithmetic: 2 + 2 = 4\nFINAL: 4")
+        self.assertEqual(trace.method, "self_refine_gate")
+        self.assertEqual(len(client.prompts), 4)
+        self.assertEqual(trace.steps[1]["feedback_source"], "decision_gate_accepted")
+        self.assertEqual(trace.steps[1]["gate"]["decision"], "accept")
+        self.assertEqual(
+            trace.steps[1]["gate"]["features"]["evidence"]["status"],
+            "verified_mismatch",
+        )
+
     def test_solve_command_writes_trace_without_real_llm(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             log_path = Path(temp_dir) / "solve_trace.jsonl"

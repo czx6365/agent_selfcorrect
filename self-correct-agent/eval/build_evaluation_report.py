@@ -77,6 +77,8 @@ def _method_rate(methods: dict[str, Any], name: str) -> float | None:
 def _self_refine_feedback_label(method: str) -> str:
     if method == "self_refine_calculator":
         return "自评+计算器门控"
+    if method == "self_refine_gate":
+        return "自评+采纳门控"
     return "旧版模型自评"
 
 
@@ -146,7 +148,7 @@ def build_report(args: argparse.Namespace) -> None:
 
     math_variants = [
         name
-        for name in ("self_refine", "self_refine_calculator")
+        for name in ("self_refine", "self_refine_calculator", "self_refine_gate")
         if name in math_methods
     ]
     code_variants = sorted(
@@ -195,6 +197,14 @@ def build_report(args: argparse.Namespace) -> None:
                 "tool",
             )
         )
+    if "self_refine_gate" in math_methods:
+        chart_rows.append(
+            (
+                "GSM8K Self-Refine decision-gated",
+                _method_rate(math_methods, "self_refine_gate") or 0,
+                "tool",
+            )
+        )
     chart_rows.extend(
         [
             ("GSM8K calculator CRITIC", _method_rate(math_methods, "critic") or 0, "tool"),
@@ -227,6 +237,12 @@ def build_report(args: argparse.Namespace) -> None:
     self_compare = pairwise(math_records, "baseline_cot", "self_refine", "correct")
     gated_self_compare = pairwise(
         math_records, "baseline_cot", "self_refine_calculator", "correct"
+    )
+    decision_gate_compare = pairwise(
+        math_records, "baseline_cot", "self_refine_gate", "correct"
+    )
+    original_to_decision_gate = pairwise(
+        math_records, "self_refine", "self_refine_gate", "correct"
     )
     code_compare = pairwise(code_records, "code_direct", "code_self_repair", "passed")
     lines = [
@@ -270,6 +286,19 @@ def build_report(args: argparse.Namespace) -> None:
             if "self_refine_calculator" in math_methods
             else []
         ),
+        *(
+            [
+                (
+                    "- 采纳门控 Self-Refine（1 轮）为 "
+                    f"{percent(_method_rate(math_methods, 'self_refine_gate'))}，相对 CoT 改对 "
+                    f"{decision_gate_compare['fixed'] if decision_gate_compare else '-'} 题、改错 "
+                    f"{decision_gate_compare['regressed'] if decision_gate_compare else '-'} 题；相对旧版 Self-Refine 挽回 "
+                    f"{original_to_decision_gate['fixed'] if original_to_decision_gate else '-'} 个退化案例。"
+                )
+            ]
+            if "self_refine_gate" in math_methods
+            else []
+        ),
         (
             f"- HumanEval 单测修复为 85%，相对 Direct 改对 "
             f"{code_compare['fixed'] if code_compare else '-'} 题、改错 "
@@ -289,7 +318,7 @@ def build_report(args: argparse.Namespace) -> None:
             f"{percent(_method_rate(code_methods, 'code_self_repair_r2'))}。"
             "这支持“失败才修改、通过就停止”的门控策略；单纯增加轮数没有带来单调收益。"
         ),
-        "Self-Refine 保留两种一轮模式：旧版模型自评与计算器门控；代码修复的不同轮数仍使用独立结果名（如 `code_self_repair_r2`）。",
+        "Self-Refine 保留三种一轮模式：旧版模型自评、计算器门控与采纳门控；代码修复的不同轮数仍使用独立结果名（如 `code_self_repair_r2`）。",
         "",
         "## 复现实验",
         "",
@@ -308,6 +337,9 @@ def build_report(args: argparse.Namespace) -> None:
         "",
         "# 证据门控 Self-Refine：只有 calculator 证明算术不一致才改写",
         ".venv/bin/python main.py eval --provider local --method self_refine --self-refine-mode calculator --rounds 1 --max-tokens 512 --workers 4",
+        "",
+        "# 采纳门控 Self-Refine：先生成候选修订，再由 decision gate 决定是否采纳",
+        ".venv/bin/python main.py eval --provider local --method self_refine --self-refine-mode decision_gate --rounds 1 --max-tokens 512 --workers 4",
         "",
         "# 外部反馈：代码单测修复 2、3 轮",
         ".venv/bin/python eval/run_code_eval.py --provider local --mode self_repair --repair-rounds 2 --limit 100 --max-tokens 768 --workers 1",

@@ -114,7 +114,7 @@ def self_refine_report(records: list[dict[str, Any]]) -> dict[str, Any] | None:
     cot_to_refine = compare_methods(records, "baseline_cot", "self_refine")
     variants = [
         method
-        for method in ("self_refine", "self_refine_calculator")
+        for method in ("self_refine", "self_refine_calculator", "self_refine_gate")
         if any(record["method"] == method for record in records)
     ]
     by_round = {
@@ -292,11 +292,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         method = f"baseline_{args.mode}"
         agent = BaselineAgent(client, mode=args.mode)
     elif args.method == "self_refine":
-        method = (
-            "self_refine"
-            if args.self_refine_mode == "original"
-            else "self_refine_calculator"
-        )
+        method = {
+            "original": "self_refine",
+            "calculator": "self_refine_calculator",
+            "decision_gate": "self_refine_gate",
+        }[args.self_refine_mode]
         agent = SelfRefineAgent(
             client,
             max_rounds=args.rounds,
@@ -517,9 +517,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if args.method == "self_refine":
         summary["rounds"] = args.rounds
         summary["self_refine_mode"] = args.self_refine_mode
-        summary["feedback_source"] = (
-            "self" if args.self_refine_mode == "original" else "self_with_calculator_gate"
-        )
+        summary["feedback_source"] = {
+            "original": "self",
+            "calculator": "self_with_calculator_gate",
+            "decision_gate": "self_with_decision_gate",
+        }[args.self_refine_mode]
     if args.method == "reflection":
         summary.update(
             {
@@ -591,9 +593,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--self-refine-mode",
-        choices=("original", "calculator"),
+        choices=("original", "calculator", "decision_gate"),
         default="original",
-        help="Compare original Self-Refine r1 with calculator-gated Self-Refine.",
+        help=(
+            "Compare original, calculator-gated, and decision-gated "
+            "Self-Refine."
+        ),
     )
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument(
