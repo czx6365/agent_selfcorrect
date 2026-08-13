@@ -2,3 +2,8 @@
 .vscode/
 **/__pycache__/
 *.py[cod]
+.venv/
+.env
+
+# Keep literature notes and links, but do not vendor third-party paper PDFs.
+docs/papers/*.pdf
