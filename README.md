@@ -1,136 +1,163 @@
 # SelfCorrect Agent
 
-一个研究大语言模型自我纠错能力的实验项目。
+**When does LLM self-correction actually help — and when does it make a correct answer worse?**
 
-本项目关注的问题不是“让模型多想几遍会不会更好”，而是更具体地回答：
+SelfCorrect Agent is an experimental research project that evaluates several forms of iterative LLM correction on **GSM8K** and **HumanEval**. The project compares unguided self-refinement with correction driven by external evidence such as calculators, unit tests, and previously verified examples.
 
-> 自我纠错在什么条件下真的有用？什么时候反而会把正确答案改错？
+The main finding is simple:
 
-项目已经实现数学题和代码题两条实验线，比较 Direct、CoT、Self-Refine、Reflection、CRITIC、单元测试修复和已验证样例检索等方法，并保存了逐题记录、汇总结果和评测报告。
+> **More revision is not automatically better. Self-correction becomes more reliable when the feedback signal is concrete, externally checkable, and strong enough to justify changing the original answer.**
 
-## 当前状态
+## Research Question
 
-已完成第 1-5 周核心实验：
+Many agent workflows assume that asking an LLM to critique and rewrite its own output will improve accuracy. This project tests that assumption under controlled settings.
 
-- 固定数据集：GSM8K 100 题、HumanEval 前 100 题。
-- 固定模型设置：本地 Qwen3-8B Q4，`temperature=0`，`seed=42`。
-- 实现统一 Agent 接口和多种纠错方法。
-- 实现数学 exact match 判分和 HumanEval 单元测试判分。
-- 实现安全计算器、代码执行反馈、反思记忆和正确样例检索。
-- 生成完整结果文件、失败案例分析、评测报告和核心图。
-- 整理论文阅读笔记和本地 PDF。
+It asks:
 
-## 核心结论
+1. Does unguided self-refinement improve reasoning accuracy?
+2. Can external tools prevent harmful revisions?
+3. Do reflection memories help across tasks?
+4. Does increasing the number of correction rounds provide monotonic gains?
+5. Can verified execution feedback act as a reliable candidate-selection signal?
 
-实验结果支持一个比较明确的判断：
+## Experimental Setup
 
-**自我纠错是否有用，关键不在于多生成一轮，而在于反馈是否可靠、具体，并且能在不知道标准答案的情况下决定是否采纳修改。**
+- **Model:** local Qwen3-8B Q4
+- **Temperature:** `0`
+- **Seed:** `42`
+- **Math benchmark:** first 100 GSM8K examples
+- **Code benchmark:** first 100 HumanEval examples
+- **Math metric:** exact-match numerical accuracy
+- **Code metric:** official `check(candidate)` unit-test pass rate
 
-主要发现：
+The evaluation pipeline records per-example outputs, correction traces, aggregate metrics, pairwise method comparisons, and failure cases.
 
-- 无证据门控的历史 Self-Refine 不稳定。GSM8K 上 CoT 是 94%，旧版 Self-Refine 1 轮降到 90%，说明模型会把原本正确的答案改错。当前实现保留旧版 r1 作为对照，并新增只有计算器证明算术不一致时才采纳修改的门控模式。
-- 代码题更容易从纠错中受益。HumanEval 上单元测试反馈把 Direct 从 82% 提升到 85%，且没有把已通过样例改坏。
-- 数学计算器反馈有局限。计算器只能验证算术表达式，不能判断模型是否正确理解题意，因此 CRITIC 没有超过 CoT。
-- 已验证正确样例检索最有效。Reflection + Sentence-Transformers 检索历史正确样例达到 96%，是当前 GSM8K 最好结果。
-- 增加轮数不保证单调收益。当前数学 Self-Refine 保留两种一轮模式用于对比；代码 Self-Repair 2 轮没有超过 1 轮。
+## Methods
 
-## 实验结果
+| Method | Feedback signal | Role in the study |
+| --- | --- | --- |
+| Direct | none | non-reasoning baseline |
+| CoT | internal reasoning | reasoning baseline |
+| Self-Refine original | model self-critique | tests unguided rewrite behavior |
+| Self-Refine calculator | self-critique + calculator gate | only revises when arithmetic evidence supports the critique |
+| Reflection | verified historical lessons | tests experience reuse |
+| CRITIC | calculator | tool-based arithmetic verification |
+| Self-Repair | unit-test output | repairs code from executable feedback |
+| Correct Example Retrieval | previously verified correct examples | retrieval-based experience reuse without future-answer leakage |
 
-### GSM8K 数学题
+## Results
 
-固定 100 题，数值 exact match 判分。
+### GSM8K
 
-| 方法 | 正确数 | 准确率 |
-|---|---:|---:|
+| Method | Correct | Accuracy |
+| --- | ---: | ---: |
 | Direct | 38 / 100 | 38.0% |
 | CoT | 94 / 100 | 94.0% |
-| 旧版 Self-Refine 1 轮 | 90 / 100 | 90.0% |
-| Reflection 旧版 recent | 94 / 100 | 94.0% |
-| CRITIC 计算器反馈 | 90 / 100 | 90.0% |
-| Reflection + local-hash embedding | 89 / 100 | 89.0% |
-| Reflection + 已验证正确样例检索 | **96 / 100** | **96.0%** |
+| Self-Refine, original, 1 round | 90 / 100 | 90.0% |
+| Reflection, recent-memory baseline | 94 / 100 | 94.0% |
+| CRITIC with calculator feedback | 90 / 100 | 90.0% |
+| Reflection + local-hash retrieval | 89 / 100 | 89.0% |
+| Reflection + verified-example retrieval | **96 / 100** | **96.0%** |
 
-关键对比：
+Key pairwise observations:
 
-- CoT 相对 Direct：改对 58 题，改错 2 题。
-- 旧版 Self-Refine 1 轮相对 CoT：改对 0 题，改错 4 题。
-- 已验证正确样例检索相对 CoT：改对 2 题，改错 0 题。
+- CoT corrected 58 Direct failures but degraded 2 Direct successes.
+- Unguided Self-Refine corrected **0** CoT failures and changed **4** previously correct CoT answers into wrong answers.
+- Verified-example retrieval improved 2 CoT failures without degrading an already-correct CoT answer in this 100-example run.
 
-### HumanEval 代码题
+### HumanEval
 
-固定前 100 题，使用官方 `check(candidate)` 单元测试判分。
-
-| 方法 | 通过数 | 通过率 |
-|---|---:|---:|
+| Method | Passed | Pass rate |
+| --- | ---: | ---: |
 | Direct | 82 / 100 | 82.0% |
 | CoT | 85 / 100 | 85.0% |
-| Self-Repair 1 轮 | 85 / 100 | 85.0% |
-| Self-Repair 2 轮 | 85 / 100 | 85.0% |
-| CoT-Repair 1 轮 | 85 / 100 | 85.0% |
-| Best-of 已跑方法 | **88 / 100** | **88.0%** |
+| Self-Repair, 1 round | 85 / 100 | 85.0% |
+| Self-Repair, 2 rounds | 85 / 100 | 85.0% |
+| CoT-Repair, 1 round | 85 / 100 | 85.0% |
+| Best-of executed methods | **88 / 100** | **88.0%** |
 
-关键对比：
+Key observations:
 
-- CoT 相对 Direct：修复 4 题，退化 1 题。
-- Self-Repair 相对 Direct：修复 3 题，退化 0 题。
-- Best-of 说明不同方法能解出的题并不完全重合，单测可作为候选选择信号。
+- Unit-test-guided Self-Repair fixed 3 Direct failures and did not break a previously passing Direct solution in this run.
+- A second repair round did not improve over one round.
+- Different methods solve partially different subsets of HumanEval, so executable tests can also act as a candidate-selection signal.
 
-## 方法说明
+## Core Interpretation
 
-项目实现了以下 Agent / 评测方法：
+The experiments support three practical conclusions.
 
-| 方法 | 反馈来源 | 说明 |
-|---|---|---|
-| Direct | 无 | 直接输出最终答案或代码 |
-| CoT | 无 | 显式逐步推理后输出答案 |
-| Self-Refine original | 模型自评 | 初稿 -> 自我批评 -> 改写；对应旧版 r1 结果 `self_refine` |
-| Self-Refine calculator | 自评 + calculator 门控 | 初稿 -> 自我批评；只有计算器证明算术不一致才改写，结果写为 `self_refine_calculator` |
-| Reflection | 历史失败教训 | 外部判错后写 lesson，后续题目检索使用 |
-| CRITIC | 计算器 | 模型给出 `VERIFY` 表达式，由安全计算器检查 |
-| Self-Repair | 单元测试 | 代码失败后用 traceback、断言诊断修复 |
-| Correct Example Retrieval | 已验证正确样例 | 只检索当前题之前已经被外部判分确认正确的样例 |
+### 1. Self-critique without evidence is unstable
 
-实验中特别注意避免标准答案泄漏：
+The model can produce a plausible critique of an answer that was already correct. If the system automatically accepts every critique, additional reasoning can reduce accuracy.
 
-- Agent 的 `solve()` 只接收题目，不接收当前题标准答案。
-- 标准答案只在候选生成结束后用于最终统计。
-- Self-Refine 的 critique prompt 不包含参考答案。
-- CRITIC 只使用模型自己声明的 `VERIFY` 表达式和计算器结果。
-- 代码修复只使用单元测试输出。
-- 正确样例检索只使用当前题之前已经判对的模型答案，不提前读取未来题目。
+### 2. External feedback is more useful when it is task-aligned
 
-## 仓库结构
+A calculator can verify arithmetic, but it cannot determine whether the model misunderstood the problem statement. Unit tests are stronger for code because they directly check executable behavior.
+
+### 3. Correction should be gated
+
+A robust agent should not treat every self-generated criticism as sufficient evidence for revision. The correction policy should depend on a verifiable signal or a validated memory.
+
+## Leakage Control
+
+The project explicitly avoids giving the current example's reference answer to the solving agent.
+
+- `solve()` receives the problem only.
+- Reference answers are used after generation for evaluation.
+- Self-Refine prompts do not contain the gold answer.
+- CRITIC only verifies calculator expressions proposed by the model.
+- Code repair only receives execution / unit-test feedback.
+- Correct-example retrieval only uses examples that appeared earlier and were already externally verified.
+
+This distinction is important because otherwise a "self-correction" experiment can accidentally become answer-conditioned revision.
+
+## Research Artifacts
+
+The repository retains the intermediate artifacts needed to inspect the experiments rather than only publishing final percentages.
+
+```text
+self-correct-agent/results/
+├── baseline_records.jsonl
+├── baseline_summary.json
+├── code_records.jsonl
+├── code_summary.json
+├── evaluation_report.md
+└── when_correction_helps.svg
+```
+
+![When correction helps](self-correct-agent/results/when_correction_helps.svg)
+
+Additional material includes:
+
+- [`self-correct-agent/failure_review.md`](self-correct-agent/failure_review.md) — selected GSM8K failure analysis;
+- [`docs/paper_notes.md`](docs/paper_notes.md) — literature notes;
+- [`docs/echo_repro_to_selfcorrect.md`](docs/echo_repro_to_selfcorrect.md) — connection between correction research and repository-level bug reproduction.
+
+## Repository Structure
 
 ```text
 agent_selfcorrect/
-  README.md
-  docs/
-    paper_notes.md                   # 论文阅读笔记
-    research_proposal.md             # 科研提案
-    demo_script.md                   # 演示稿
-    echo_repro_to_selfcorrect.md     # 从 ECHO-Repro 到 SelfCorrect 的研究衔接
-    papers/                          # 本地论文 PDF
-  self-correct-agent/
-    main.py                          # GSM8K CLI 入口
-    agents/                          # baseline / self_refine / reflection / critic
-    tools/                           # calculator / code_runner
-    data/                            # 数据集与原始 parquet
-      dataset.jsonl                  # GSM8K 100 题子集
-      datasets/
-    eval/
-      run_eval.py                    # 数学评测
-      run_code_eval.py               # HumanEval 代码评测
-      build_evaluation_report.py     # 生成报告和图
-      export_logs.py                 # 导出统一日志
-    results/                         # records、summary、报告与图
-      evaluation_report.md           # 第 4-5 周实验报告
-      when_correction_helps.svg      # 核心实验图
-    logs/                            # solve trace 与 reflection log
-    failure_review.md                # GSM8K baseline 失败案例
-    requirements.txt
+├── docs/
+│   ├── paper_notes.md
+│   ├── research_proposal.md
+│   └── echo_repro_to_selfcorrect.md
+└── self-correct-agent/
+    ├── main.py
+    ├── agents/
+    │   ├── base.py
+    │   ├── self_refine.py
+    │   ├── reflection.py
+    │   ├── reflection_memory.py
+    │   └── critic.py
+    ├── tools/
+    ├── eval/
+    ├── data/
+    ├── results/
+    ├── logs/
+    └── requirements.txt
 ```
 
-## 快速开始
+## Quick Start
 
 ```bash
 cd self-correct-agent
@@ -139,7 +166,7 @@ python3 -m venv .venv
 cp .env.example .env
 ```
 
-启动本地 `llama-server`。默认评测使用 OpenAI-compatible 的本地接口：
+The default local setup expects an OpenAI-compatible `llama-server` endpoint.
 
 ```bash
 llama-server -m "$QWEN_GGUF_PATH" \
@@ -148,59 +175,40 @@ llama-server -m "$QWEN_GGUF_PATH" \
   --reasoning off
 ```
 
-运行 GSM8K 数学评测：
+### GSM8K examples
 
 ```bash
 .venv/bin/python main.py eval --provider local --method baseline --mode direct --max-tokens 512 --reset-results
 .venv/bin/python main.py eval --provider local --method baseline --mode cot --max-tokens 512
 .venv/bin/python main.py eval --provider local --method self_refine --self-refine-mode original --rounds 1 --max-tokens 512
-.venv/bin/python main.py eval --provider local --method self_refine --self-refine-mode calculator --rounds 1 --max-tokens 512
 .venv/bin/python main.py eval --provider local --method critic --max-tokens 512
 ```
 
-运行 HumanEval 代码评测：
+### HumanEval examples
 
 ```bash
 .venv/bin/python eval/run_code_eval.py --provider local --mode direct --limit 100 --max-tokens 768 --workers 1 --reset-results
-.venv/bin/python eval/run_code_eval.py --provider local --mode cot --limit 100 --max-tokens 768 --workers 1
 .venv/bin/python eval/run_code_eval.py --provider local --mode self_repair --limit 100 --max-tokens 768 --repair-rounds 1 --workers 1
-.venv/bin/python eval/run_code_eval.py --provider local --mode self_repair --limit 100 --max-tokens 768 --repair-rounds 2 --workers 1
 ```
 
-重新生成报告和核心图：
+### Rebuild the report
 
 ```bash
 .venv/bin/python eval/build_evaluation_report.py
 ```
 
-## 主要产物
+## Related Research Directions
 
-- `self-correct-agent/results/baseline_records.jsonl`：GSM8K 逐题记录。
-- `self-correct-agent/results/baseline_summary.json`：GSM8K 汇总结果和 pairwise comparison。
-- `self-correct-agent/results/code_records.jsonl`：HumanEval 逐题记录。
-- `self-correct-agent/results/code_summary.json`：HumanEval 汇总结果和 Best-of 统计。
-- `self-correct-agent/results/evaluation_report.md`：第 4-5 周核心评测报告。
-- `self-correct-agent/results/when_correction_helps.svg`：核心实验图。
-- `self-correct-agent/failure_review.md`：CoT baseline 失败样例。
-- `docs/paper_notes.md`：论文阅读笔记。
+The experimental design is informed by work on ReAct, Self-Refine, Reflexion, CRITIC, experience learning, self-consistency, and chain-of-verification. The repository uses these ideas as comparison points rather than claiming to reproduce every paper exactly.
 
-## 论文与背景
+## Current Limitations
 
-项目参考并对照了以下方向：
+- The reported runs use only 100 examples from each benchmark.
+- Results come from one local model configuration and should not be generalized to all LLMs.
+- Calculator feedback is intentionally narrow and cannot validate semantic reasoning.
+- HumanEval execution feedback is stronger than math feedback because code behavior can be directly tested.
+- Additional model scales, repeated seeds, and equal-compute baselines would strengthen the conclusions.
 
-- ReAct：推理和工具行动交替。
-- Self-Refine：模型自评和迭代改写。
-- Reflexion：失败后写自然语言反思记忆。
-- CRITIC：工具交互式验证和纠错。
-- Large Language Models Cannot Self-Correct Reasoning Yet：无外部反馈时自纠错不稳定的反方证据。
-- ExpeL、Self-Consistency、Chain-of-Verification：经验学习、多路径推理和验证链。
+## Research Status
 
-详细笔记见 `docs/paper_notes.md`。
-
-## 下一步可扩展方向
-
-- 重新运行 calculator-gated Self-Refine，和已保存的旧版 r1 对比“有工具证据才修改”是否能减少退化。
-- 加入等成本 self-consistency baseline，比较“多采样投票”和“多轮自我修改”。
-- 对 GSM8K 错误类型做人工标注，区分建模错误、算术错误、抽取错误。
-- 把 HumanEval 的单元测试反馈扩展到真实仓库 Issue / CI 修复任务。
-- 将 Reflection 记忆升级为可投票、可编辑、可去噪的经验库。
+This is an independent experimental project for studying **reliable LLM-agent correction and verification**. The emphasis is on controlled comparison, failure analysis, and evidence-gated revision rather than on presenting self-correction as universally beneficial.
